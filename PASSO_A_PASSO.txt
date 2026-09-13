@@ -1,0 +1,72 @@
+ASSISTENTE JURIDICO (Windows)
+================================
+
+IA recomendada: Google Gemini 2.5 PRO.
+Cada acao gera TRES arquivos na pasta do processo:
+  1) processo.pdf          — PDF original do processo
+  2) NomeDaPeca.docx       — Word para editar
+  3) NomeDaPeca.pdf        — PDF pronto para enviar/protocolar
+
+Alem disso o programa guarda prompts_caso.json (aprendizado daquele processo)
+e um aprendizado_global.json (mesmo tipo de acao em outros processos).
+
+
+1) O QUE MANDAR
+---------------
+So: AssistenteJuridico-Windows.zip
+
+
+2) INSTALAR (Windows)
+---------------------
+A) Python — https://www.python.org/downloads/ (marcar Add to PATH)
+B) Extrair o zip > dois cliques em Iniciar.bat > deixar a janela preta aberta
+
+
+3) LIGAR GEMINI PRO
+-------------------
+1. https://aistudio.google.com/apikey  > Create API key (AIza...)
+2. Ativar Billing / Pay as you go (limite mensal, ex. US$ 20)
+3. No programa: Ajustes > Gemini Pro > colar chave > Salvar
+
+
+4) COMO USAR
+------------
+1) Escolher PDF do processo
+2) Usar este
+3) (Opcional) Escrever no DIALOGO o que a IA deve enfatizar
+4) Marcar "Guardar este texto no prompt..." (recomendado)
+5) Clicar na peca (verde) → grava Word + PDF na pasta
+6) Se faltou algo: escreva no dialogo ("faltou analisar ferias no TRCT...")
+   e clique em "Refinar ultima peca" → atualiza Word e PDF e guarda o prompt
+
+Pasta:
+  Documentos \ Assistente Juridico \ Processos \ [nome do caso]
+
+
+5) APRENDIZADO (IMPORTANTE)
+---------------------------
+- Por PROCESSO: prompts_caso.json — acumula feedbacks daquele caso
+- GLOBAL: Documentos\Assistente Juridico\aprendizado_global.json
+  → se voce mandou "cruzar TRCT com ferias" num RECURSO,
+    o proximo recurso em outro processo ja leva essa orientacao
+
+Botao "Ver prompts salvos" mostra o que ja ficou gravado.
+
+
+6) OPCOES
+---------
+Analise: Resumo, Jurisprudencias
+Pecas: Contestacao, Replica, Recurso, Contrarrazoes
+Outras: Alegacoes finais, Embargos, Impugnacao laudo/calculos,
+        Manifestacao, Peticao, Acordo, Pedido personalizado
+Refinar: reescreve a ultima peca com o dialogo
+
+
+7) PROBLEMAS
+------------
+- Falta chave / 429 / saldo: Ajustes + Billing Google
+- Python nao encontrado: reinstalar com PATH
+- Scan sem texto (TRCT foto): escrever no dialogo os valores/folhas
+- Demora 1-3 min no Pro: normal em PDF grande
+
+NAO precisa apagar extrato.json — o programa rele o PDF ao gerar.

@@ -1,0 +1,30 @@
+COMO FAZER FUNCIONAR NO WINDOWS
+================================
+
+1) EXTRAIR o zip (obrigatorio)
+   Botao direito > Extrair tudo
+   Entre na pasta nova
+
+2) NÃO use "Executar como administrador"
+   Clique normal duas vezes em:
+     Iniciar_janela_fixa.bat
+   (melhor que Iniciar.bat se a janela sumir)
+
+3) Se pedir Python
+   https://www.python.org/downloads/
+   MARQUE: Add python.exe to PATH
+   Instale, feche tudo, rode o bat de novo
+
+4) Janela preta tem que FICAR ABERTA
+   Quando aparecer "Abrindo http://127.0.0.1:8765"
+   o site abre. Se nao abrir, cole no Chrome:
+   http://127.0.0.1:8765
+
+5) Chave da IA (Groq gratis)
+   https://console.groq.com/keys
+   Ajustes no site > Groq > colar gsk_... > Salvar
+
+6) SE NAO FUNCIONAR
+   Rode: Diagnostico.bat
+   Mande no Zap o arquivo diagnostico.txt
+   e/ou iniciar_log.txt + print da tela preta

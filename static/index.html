@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Assistente Jurídico</title>
+  <link rel="stylesheet" href="/ui/styles.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">Na sua máquina · pastas em Documentos</p>
+      <h1>Assistente Jurídico</h1>
+    </div>
+    <button type="button" id="btn-ajustes" class="ghost">Ajustes</button>
+  </header>
+
+  <main>
+    <section class="card importar">
+      <h2>1. Pegar o processo</h2>
+      <p>Baixe o PDF no Jusbrasil ou no PJe. O programa cria a pasta do caso e guarda o <strong>processo.pdf</strong>. Cada ação gera <strong>Word</strong> (editar) + <strong>PDF</strong> (enviar), na mesma pasta.</p>
+      <label class="file-btn">
+        Escolher PDF do processo
+        <input id="pdf" type="file" accept="application/pdf,.pdf" />
+      </label>
+      <p id="import-status" class="status"></p>
+    </section>
+
+    <section class="card">
+      <h2>2. Processos nesta máquina</h2>
+      <div id="lista" class="lista"></div>
+    </section>
+
+    <section class="card" id="acoes-wrap" hidden>
+      <h2>3. O que você quer fazer</h2>
+      <p id="caso-atual" class="muted"></p>
+
+      <label class="instrucoes-label" for="instrucoes-extra">
+        Diálogo / instruções <span class="muted">(salva no processo e no aprendizado global da mesma ação)</span>
+      </label>
+      <textarea id="instrucoes-extra" rows="4" placeholder="Ex.: Ficou bom, porém faltou cruzar férias e 13º com o TRCT fl. 677 (R$ 2.652,04 + R$ 884,01 + R$ 232,95) e o comprovante bancário fl. 679…"></textarea>
+      <label class="check-row">
+        <input type="checkbox" id="salvar-aprendizado" checked />
+        Guardar este texto no prompt do processo e no aprendizado global
+      </label>
+      <p class="muted small">Na próxima vez que você gerar a <em>mesma ação</em> (ex.: recurso) neste ou em outro processo, o sistema já leva essas orientações.</p>
+
+      <div class="row refine-row">
+        <button type="button" id="btn-refinar" class="direct">Refinar última peça (atualiza Word + PDF)</button>
+        <button type="button" id="btn-ver-prompts" class="ghost">Ver prompts salvos</button>
+        <button type="button" id="btn-pasta" class="ghost">Abrir pasta</button>
+      </div>
+
+      <div id="prompts-box" class="prompts-box" hidden></div>
+
+      <h3 class="secao-acoes">Análise</h3>
+      <div class="grid">
+        <button data-tipo="resumo" data-modo="chat">Resumo (ver + gravar Word/PDF)</button>
+        <button data-tipo="resumo" data-modo="arquivos" class="direct">Resumo Word + PDF</button>
+        <button data-tipo="jurisprudencia" data-modo="chat">Jurisprudências (ver + gravar)</button>
+        <button data-tipo="jurisprudencia" data-modo="arquivos" class="direct">Jurisprudências Word + PDF</button>
+      </div>
+
+      <h3 class="secao-acoes">Peças principais</h3>
+      <div class="grid">
+        <button data-tipo="defesa" data-modo="arquivos" class="direct">Contestação Word + PDF</button>
+        <button data-tipo="replica" data-modo="arquivos" class="direct">Réplica Word + PDF</button>
+        <button data-tipo="recurso" data-modo="arquivos" class="direct">Recurso ordinário Word + PDF</button>
+        <button data-tipo="contrarrazoes" data-modo="arquivos" class="direct">Contrarrazões Word + PDF</button>
+      </div>
+
+      <h3 class="secao-acoes">Outras peças e fases</h3>
+      <div class="grid">
+        <button data-tipo="alegacoes_finais" data-modo="arquivos" class="direct">Alegações finais</button>
+        <button data-tipo="embargos" data-modo="arquivos" class="direct">Embargos de declaração</button>
+        <button data-tipo="impugnacao_laudo" data-modo="arquivos" class="direct">Impugnação ao laudo</button>
+        <button data-tipo="impugnacao_calculos" data-modo="arquivos" class="direct">Impugnação aos cálculos</button>
+        <button data-tipo="manifestacao" data-modo="arquivos" class="direct">Manifestação</button>
+        <button data-tipo="peticao" data-modo="arquivos" class="direct">Petição intermediária</button>
+        <button data-tipo="acordo" data-modo="arquivos" class="direct">Minuta de acordo</button>
+        <button data-tipo="personalizado" data-modo="arquivos" class="direct wide">Pedido personalizado Word + PDF</button>
+      </div>
+
+      <p id="acao-status" class="status"></p>
+    </section>
+
+    <section class="card chat" id="chat-wrap" hidden>
+      <div class="chat-head">
+        <h2 id="chat-titulo">Resultado</h2>
+        <div class="row">
+          <button type="button" id="btn-salvar" class="ghost">Regravar Word + PDF</button>
+        </div>
+      </div>
+      <p id="arquivos-gerados" class="muted small"></p>
+      <pre id="chat"></pre>
+    </section>
+  </main>
+
+  <dialog id="ajustes">
+    <form method="dialog" id="form-ajustes">
+      <h2>Ajustes</h2>
+      <p>Sem cartão: use <strong>Groq (gratuito)</strong>. Organizar pastas funciona sem chave.</p>
+      <label>Plano de IA
+        <select id="preset">
+          <option value="groq_free">Groq — gratuito (recomendado)</option>
+          <option value="google_flash">Gemini Flash — se ainda tiver conta</option>
+          <option value="google_pro">Gemini Pro — pago</option>
+          <option value="google_lite">Gemini Flash-Lite</option>
+          <option value="openai_mini">OpenAI GPT-4.1 mini — pago</option>
+        </select>
+      </label>
+      <label>Chave da API
+        <input id="api-key" type="password" autocomplete="off" placeholder="gsk_... (Groq) ou AIza... (Gemini)" />
+      </label>
+      <p class="muted small">Groq grátis: <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a></p>
+      <label>Modelo (avançado)
+        <input id="api-model" type="text" />
+      </label>
+      <p id="custo-info" class="muted"></p>
+      <p id="pasta-info" class="muted"></p>
+      <menu>
+        <button value="cancel" class="ghost">Fechar</button>
+        <button id="salvar-ajustes" value="default">Salvar</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script src="/ui/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+ASSISTENTE JURIDICO (Windows)
+================================
+
+IA gratuita recomendada: Groq (console.groq.com/keys) — chave gsk_...
+Alternativas: Gemini / OpenAI (pagos).
+
+Cada acao gera na pasta do processo:
+  1) processo.pdf
+  2) NomeDaPeca.docx  (editar)
+  3) NomeDaPeca.pdf   (enviar)
+
+Prompts do processo e aprendizado global ficam salvos automaticamente.
+
+
+1) O QUE MANDAR NO WHATSAPP
+---------------------------
+So o arquivo: AssistenteJuridico-Windows.zip
+NAO mande PDF de processo no Zap (e enorme).
+
+
+2) INSTALAR NO PC DELA (Windows)
+--------------------------------
+A) Python (primeira vez)
+   https://www.python.org/downloads/
+   Marcar: Add python.exe to PATH > Install Now
+
+B) Programa
+   1. Extrair o zip (Extrair tudo)
+   2. Dois cliques em Iniciar.bat
+   3. Deixar a janela preta ABERTA
+   4. Navegador abre em http://127.0.0.1:8765
+   5. (Opcional) Atalho do Iniciar.bat na Area de Trabalho
+
+
+3) LIGAR A IA GRATUITA (GROQ)
+-----------------------------
+1. https://console.groq.com/keys
+2. Criar conta > Create API Key > copiar (gsk_...)
+3. No programa: Ajustes > plano "Groq — gratuito" > colar chave > Salvar
+
+
+4) USO
+------
+Escolher PDF > Usar este > (opcional) dialogo > clicar na peca
+Word + PDF saem em:
+  Documentos \ Assistente Juridico \ Processos \ [caso]
+
+Refinar: escreva o que faltou no dialogo > "Refinar ultima peca"
+
+
+5) PROBLEMAS
+------------
+- Falta chave: Ajustes > gsk_...
+- Erro 429: limite gratis do Groq — espere e tente de novo
+- Python nao encontrado: reinstalar com PATH
+- Janela preta fechou: o site para — abra Iniciar.bat de novo

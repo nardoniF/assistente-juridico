@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+*.pem
+config.json
+_extract/
+_work/
+*.zip
+.DS_Store
+Processo_*.pdf
+Recurso_*.docx
+iniciar_log.txt
+diagnostico.txt
+PACOTE_WINDOWS/.venv/
+PACOTE_WINDOWS/__pycache__/
