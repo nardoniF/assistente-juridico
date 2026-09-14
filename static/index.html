@@ -22,8 +22,8 @@
 
       <label class="dropzone" id="dropzone" for="pdf">
         <span class="drop-icon" aria-hidden="true"></span>
-        <strong>Importar PDF</strong>
-        <span>Arraste aqui ou clique · Jusbrasil / PJe</span>
+        <strong>Anexar PDF do processo</strong>
+        <span>Copia pra pasta do caso · vira o único <em>processo.pdf</em></span>
         <input id="pdf" type="file" accept="application/pdf,.pdf" />
       </label>
       <p id="import-status" class="status-line" role="status"></p>
@@ -48,15 +48,24 @@
           <p id="caso-atual" class="muted"></p>
         </div>
         <div class="stage-actions" id="stage-actions" hidden>
+          <label class="ghost file-inline" for="pdf-update">
+            Atualizar processo
+            <input id="pdf-update" type="file" accept="application/pdf,.pdf" hidden />
+          </label>
           <button type="button" id="btn-pasta" class="ghost">Baixar pasta (ZIP)</button>
           <button type="button" id="btn-ver-prompts" class="ghost">Prompts</button>
         </div>
       </header>
 
       <section class="empty-state" id="empty-state">
-        <p class="empty-kicker">Comece por aqui</p>
-        <h3>Importe o PDF do processo</h3>
-        <p>O programa cria a pasta do caso, guarda o <em>processo.pdf</em> e gera cada peça em <strong>Word</strong> (editar) e <strong>PDF</strong> (enviar).</p>
+        <p class="empty-kicker">Como funciona</p>
+        <h3>Um processo. Uma peça por ação.</h3>
+        <p>
+          Anexe o PDF: o Harvey cria a pasta e grava <strong>processo.pdf</strong> (só um).
+          Cada ação (recurso, contestação…) vira <strong>um Word + um PDF</strong> com nome fixo.
+          Enquanto você refina (“faltou X”), ele <strong>sobrepoe</strong> a mesma peça — sem v1/v2.
+          Quando o tribunal atualizar os autos, use <strong>Atualizar processo</strong> e o PDF principal é substituído.
+        </p>
       </section>
 
       <section class="workspace" id="acoes-wrap" hidden>
@@ -74,8 +83,8 @@
             placeholder="Ex.: Cruze férias e 13º com o TRCT fl. 677 e o comprovante bancário fl. 679. Peça dedução/compensação…"
           ></textarea>
           <div class="toolbar">
-            <button type="button" id="btn-refinar" class="accent">Refinar última peça</button>
-            <p class="hint">Feedback vira prompt do processo e da mesma ação em outros casos.</p>
+            <button type="button" id="btn-refinar" class="accent">Refinar esta peça (sobrepoe)</button>
+            <p class="hint">Feedback → mesma peça Word/PDF reescrita. Outra ação = outro arquivo.</p>
           </div>
           <div id="prompts-box" class="prompts-box" hidden></div>
         </div>

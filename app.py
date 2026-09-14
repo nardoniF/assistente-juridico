@@ -217,12 +217,12 @@ def _load_or_extract(case: Path, *, refresh: bool = False) -> dict:
 
 @app.post("/api/importar")
 async def importar(arquivo: UploadFile = File(...)):
+    """Novo processo (ou mesmo número): copia PDF → pasta nomeada → processo.pdf único."""
     organizer.ensure_dirs()
     tmp = organizer.HOME_APP / "_upload.pdf"
     raw = await arquivo.read()
     if len(raw) < 100:
         raise HTTPException(400, "Arquivo vazio.")
-    # Limite amigável ao plano free (~80 MB)
     if len(raw) > 80 * 1024 * 1024:
         raise HTTPException(400, "PDF grande demais para o plano gratuito (máx. ~80 MB).")
     tmp.write_bytes(raw)
@@ -235,7 +235,60 @@ async def importar(arquivo: UploadFile = File(...)):
         (dest / CACHE_NAME).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         if not (dest / memory.PROMPTS_CASE).exists():
             memory.save_case_prompts(dest, memory.load_case_prompts(dest))
-        return {"ok": True, "id": dest.name, "path": str(dest), "meta": data["meta"]}
+        return {
+            "ok": True,
+            "id": dest.name,
+            "path": str(dest),
+            "meta": data["meta"],
+            "processo_pdf": "processo.pdf",
+            "modo": "unico_processo_pdf",
+        }
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
+@app.post("/api/atualizar-processo")
+async def atualizar_processo(case_id: str = Form(...), arquivo: UploadFile = File(...)):
+    """Tribunal incluiu páginas: sobrepõe o processo.pdf desta pasta (sem segunda cópia)."""
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+
+    raw = await arquivo.read()
+    if len(raw) < 100:
+        raise HTTPException(400, "Arquivo vazio.")
+    if len(raw) > 80 * 1024 * 1024:
+        raise HTTPException(400, "PDF grande demais (máx. ~80 MB).")
+
+    tmp = organizer.HOME_APP / "_upload_update.pdf"
+    tmp.write_bytes(raw)
+    try:
+        data = extractor.extract_process(tmp)
+        meta = data.get("meta") or {}
+        # mantém pasta atual; só troca os autos
+        old_meta = {}
+        meta_path = case / "meta.json"
+        if meta_path.exists():
+            try:
+                old_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except Exception:
+                old_meta = {}
+        merged = {**old_meta, **meta}
+        organizer.overwrite_processo_pdf(case, tmp, merged)
+        extracao = merged.setdefault("extracao", {})
+        extracao["versao"] = EXTRACT_VERSION
+        data["meta"] = merged
+        (case / CACHE_NAME).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return {
+            "ok": True,
+            "id": case.name,
+            "path": str(case),
+            "meta": merged,
+            "processo_pdf": "processo.pdf",
+            "sobrescrito": True,
+        }
     finally:
         if tmp.exists():
             tmp.unlink()

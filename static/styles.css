@@ -397,6 +397,26 @@ button.ghost {
   color: var(--ink);
 }
 
+label.file-inline {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  font: 600 13px/1.2 var(--font-ui);
+  border-radius: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line);
+  transition: transform 0.15s, background 0.15s, border-color 0.15s;
+}
+
+label.file-inline:hover {
+  transform: translateY(-1px);
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.1);
+}
+
 button.block { width: 100%; }
 
 button:disabled {

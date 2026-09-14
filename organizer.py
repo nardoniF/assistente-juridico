@@ -150,6 +150,7 @@ def folder_name(reclamante: str, reclamado: str, numero: str) -> str:
 
 
 def copy_into_case(src: Path, meta: dict) -> Path:
+    """Cria (ou reusa) a pasta do processo e grava/sobrepoe sempre o mesmo processo.pdf."""
     ensure_dirs()
     dest_dir = PROCESSOS / folder_name(
         meta.get("reclamante") or "Reclamante",
@@ -157,13 +158,27 @@ def copy_into_case(src: Path, meta: dict) -> Path:
         meta.get("numero") or "processo",
     )
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest_pdf = dest_dir / "processo.pdf"
+    overwrite_processo_pdf(dest_dir, src, meta)
+    return dest_dir
+
+
+def overwrite_processo_pdf(case_dir: Path, src: Path, meta: dict | None = None) -> Path:
+    """Uma única cópia dos autos: processo.pdf. Versão antiga some (sobreposta)."""
+    dest_pdf = case_dir / "processo.pdf"
     if src.resolve() != dest_pdf.resolve():
         shutil.copy2(src, dest_pdf)
-    (dest_dir / "meta.json").write_text(
-        json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
-    return dest_dir
+    if meta is not None:
+        (case_dir / "meta.json").write_text(
+            json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+    # força releitura dos autos na próxima ação
+    cache = case_dir / "extrato.json"
+    if cache.exists():
+        try:
+            cache.unlink()
+        except OSError:
+            pass
+    return dest_pdf
 
 
 def list_cases() -> list[dict]:

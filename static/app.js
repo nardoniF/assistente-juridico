@@ -151,11 +151,11 @@ async function importFile(file) {
     const r = await fetch(apiUrl("/api/importar"), { method: "POST", body: fd });
     const data = await r.json();
     if (!r.ok && !data.ok) throw new Error(data.detail || "falha");
-    setStatus(importStatus, "Pasta criada.", "ok");
+.setStatus(importStatus, "Pasta criada.", "ok");
     selected = { id: data.id, path: data.path, meta: data.meta };
     selectCase(selected);
     await refreshCasos(data.id);
-    toast("Processo importado.");
+    toast("Processo na pasta · processo.pdf único.");
   } catch (e) {
     setStatus(importStatus, "Não consegui importar: " + e.message, "error");
     toast("Falha na importação");
@@ -165,7 +165,35 @@ async function importFile(file) {
   }
 }
 
+async function updateProcessFile(file) {
+  if (!file || !selected) return;
+  setBusy(true, "Sobrescrevendo processo.pdf…");
+  const fd = new FormData();
+  fd.append("case_id", selected.id);
+  fd.append("arquivo", file);
+  try {
+    const r = await fetch(apiUrl("/api/atualizar-processo"), { method: "POST", body: fd });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || "falha");
+    selected = { id: data.id, path: data.path, meta: data.meta };
+    selectCase(selected);
+    await refreshCasos(data.id);
+    toast("processo.pdf atualizado (versão única).");
+  } catch (e) {
+    toast("Falha ao atualizar: " + e.message);
+  } finally {
+    setBusy(false);
+    const inp = document.getElementById("pdf-update");
+    if (inp) inp.value = "";
+  }
+}
+
 pdf.addEventListener("change", () => importFile(pdf.files[0]));
+
+const pdfUpdate = document.getElementById("pdf-update");
+if (pdfUpdate) {
+  pdfUpdate.addEventListener("change", () => updateProcessFile(pdfUpdate.files[0]));
+}
 
 ["dragenter", "dragover"].forEach((ev) => {
   dropzone.addEventListener(ev, (e) => {
@@ -231,7 +259,7 @@ document.querySelectorAll("#acoes-wrap button[data-tipo]").forEach((btn) => {
         document.getElementById("instrucoes-extra").value = "";
       }
       await refreshCasos(selected.id);
-      toast(`Pronto: ${dx} · ${pf}`);
+      toast(`Peça única atualizada: ${dx} · ${pf}`);
     } catch (e) {
       toast(e.message);
     } finally {
@@ -244,10 +272,10 @@ document.getElementById("btn-refinar").onclick = async () => {
   if (!selected) return;
   const feedback = document.getElementById("instrucoes-extra").value.trim();
   if (!feedback) {
-    toast("Escreva no diálogo o que faltou e clique em Refinar.");
+    toast("Escreva o que faltou; o Harvey reescreve a mesma peça.");
     return;
   }
-  setBusy(true, "Refinando e atualizando Word + PDF…");
+  setBusy(true, "Refinando e sobrepondo Word + PDF…");
   const fd = new FormData();
   fd.append("case_id", selected.id);
   fd.append("feedback", feedback);
@@ -260,7 +288,7 @@ document.getElementById("btn-refinar").onclick = async () => {
     showResult(data, " (refinado)");
     if (learnFlag() === "1") document.getElementById("instrucoes-extra").value = "";
     await refreshCasos(selected.id);
-    toast("Peça refinada e arquivos atualizados.");
+    toast("Mesma peça sobrescrita. Sem arquivo novo.");
   } catch (e) {
     toast(e.message);
   } finally {
