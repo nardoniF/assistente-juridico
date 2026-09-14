@@ -1,55 +1,43 @@
-# Assistente Jurídico
+# Harvey.ai
 
-Programa local (Windows/Mac) para organizar processos trabalhistas em PDF, gerar peças (Word + PDF) e guardar prompts por processo.
+Produto da **3n20** — analisa processos em PDF e gera peças (Word + PDF) com IA.
 
-**Não precisa do Cursor.** Roda no navegador em `http://127.0.0.1:8765`.
+- **Git do produto:** este repositório  
+- **URL pública (instância 3n20):** https://3n20.com.br/harvey/  
+- **IA gratuita:** [Groq](https://console.groq.com/keys)  
+- **Hosting gratuito da API:** [Render](https://render.com) (plano free) ou Hugging Face Spaces
 
-## Baixar / clonar
+## Arquitetura (tudo grátis)
+
+| Camada | Onde | Custo |
+|--------|------|-------|
+| Front | GitHub Pages em `3n20.com.br/harvey/` | Grátis |
+| API | Render free (Docker deste repo) | Grátis* |
+| IA | Groq | Grátis (limites) |
+
+\*Render free “dorme” sem uso (~1 min no 1º acesso).
+
+## Subir a API (uma vez)
+
+1. Conta grátis em https://render.com (login com GitHub).
+2. **New → Blueprint** → repo `nardoniF/assistente-juridico` → `render.yaml`.
+3. Em Environment, cole `GROQ_API_KEY` (chave `gsk_...`).
+4. Copie a URL tipo `https://harvey-ai.onrender.com`.
+5. No site 3n20, pasta `harvey/config.js`, defina `apiBase` com essa URL.
+6. Commit/push do `site-3n20`.
+
+## Dev local
 
 ```bash
-git clone https://github.com/nardoniF/assistente-juridico.git
-```
-
-Ou no GitHub: botão verde **Code → Download ZIP**.
-
-## Windows (máquina da advogada)
-
-1. Extraia a pasta `PACOTE_WINDOWS` (ou o ZIP do GitHub).
-2. Instale Python: https://www.python.org/downloads/  
-   Marque **Add python.exe to PATH**.
-3. Dois cliques em `Iniciar_janela_fixa.bat` (**sem** administrador).
-4. Deixe a janela preta aberta.
-5. No site: **Ajustes → Groq (gratuito)** → chave em https://console.groq.com/keys → Salvar.
-6. Escolha o PDF do processo e gere a peça.
-
-Se falhar: rode `Diagnostico.bat` e envie `diagnostico.txt`.
-
-## Mac
-
-```bash
-cd assistente-juridico
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+export GROQ_API_KEY=gsk_...
 python app.py
 ```
 
-Ou duplo clique em `Iniciar.command`.
+Abra http://127.0.0.1:8765
 
-## IA
+## Domínio próprio (depois)
 
-- **Groq (grátis):** https://console.groq.com/keys — chave `gsk_...`
-- Gemini / OpenAI: opcionais (pagos)
-
-## O que a pasta do processo contém
-
-- `processo.pdf` — original  
-- `NomeDaPeca.docx` — para editar  
-- `NomeDaPeca.pdf` — para enviar  
-- `prompts_caso.json` — aprendizado daquele processo  
-
-Pastas: `Documentos/Assistente Juridico/Processos/`
-
-## Segurança
-
-Não grave chave de API no repositório. Use só em **Ajustes** no PC.
+Quando comprar o domínio, aponte o DNS para o mesmo serviço Render (ou mova o front).  
+`ROOT`/`apiBase` vazio se front e API forem a mesma origem.

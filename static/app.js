@@ -26,6 +26,11 @@ let configCache = null;
 let allCasos = [];
 let toastTimer = null;
 
+function apiUrl(path) {
+  const base = ((window.HARVEY && window.HARVEY.apiBase) || "").replace(/\/$/, "");
+  return base + path;
+}
+
 function toast(msg, ms = 4200) {
   toastEl.hidden = false;
   toastEl.textContent = msg;
@@ -54,21 +59,25 @@ function setStatus(el, text, kind = "") {
 }
 
 async function refreshConfig() {
-  configCache = await (await fetch("/api/config")).json();
+  configCache = await (await fetch(apiUrl("/api/config"))).json();
   document.getElementById("api-model").value = configCache.model;
   const pasta =
-    "Pastas: " +
+    "Dados: " +
     configCache.processos_dir +
     (configCache.has_key ? " · chave OK" : " · ainda sem chave");
   document.getElementById("pasta-info").textContent =
     pasta + " · aprendizado: " + (configCache.aprendizado_global || "");
   document.getElementById("pasta-mini").textContent = configCache.has_key
-    ? "IA pronta · " + (configCache.provider_label || configCache.provider || "")
-    : "Configure a chave em Ajustes (Groq grátis)";
+    ? "Harvey · IA pronta · " + (configCache.provider_label || configCache.provider || "")
+    : "Configure Groq grátis em Ajustes";
   document.getElementById("custo-info").textContent = configCache.custo_estimado || "";
   document.getElementById("api-key").placeholder = configCache.has_key
     ? configCache.masked_key
     : "gsk_... ou AIza...";
+  if (configCache.key_from_env) {
+    document.getElementById("api-key").disabled = true;
+    document.getElementById("api-key").placeholder = configCache.masked_key + " (servidor)";
+  }
   const preset = document.getElementById("preset");
   if (configCache.model === "llama-3.3-70b-versatile" || configCache.provider === "groq")
     preset.value = "groq_free";
@@ -115,7 +124,7 @@ function renderLista(selectId) {
 }
 
 async function refreshCasos(selectId) {
-  allCasos = await (await fetch("/api/casos")).json();
+  allCasos = await (await fetch(apiUrl("/api/casos"))).json();
   renderLista(selectId || selected?.id);
 }
 
@@ -139,7 +148,7 @@ async function importFile(file) {
   const fd = new FormData();
   fd.append("arquivo", file);
   try {
-    const r = await fetch("/api/importar", { method: "POST", body: fd });
+    const r = await fetch(apiUrl("/api/importar"), { method: "POST", body: fd });
     const data = await r.json();
     if (!r.ok && !data.ok) throw new Error(data.detail || "falha");
     setStatus(importStatus, "Pasta criada.", "ok");
@@ -211,7 +220,7 @@ document.querySelectorAll("#acoes-wrap button[data-tipo]").forEach((btn) => {
     fd.append("salvar_aprendizado", learnFlag());
     if (instrucoes) fd.append("instrucoes_extra", instrucoes);
     try {
-      const r = await fetch("/api/acao", { method: "POST", body: fd });
+      const r = await fetch(apiUrl("/api/acao"), { method: "POST", body: fd });
       const data = await r.json();
       if (!r.ok) throw new Error(data.detail || "falha");
       lastResult = data;
@@ -244,7 +253,7 @@ document.getElementById("btn-refinar").onclick = async () => {
   fd.append("feedback", feedback);
   fd.append("salvar_aprendizado", learnFlag());
   try {
-    const r = await fetch("/api/refinar", { method: "POST", body: fd });
+    const r = await fetch(apiUrl("/api/refinar"), { method: "POST", body: fd });
     const data = await r.json();
     if (!r.ok) throw new Error(data.detail || "falha");
     lastResult = data;
@@ -261,7 +270,7 @@ document.getElementById("btn-refinar").onclick = async () => {
 
 document.getElementById("btn-ver-prompts").onclick = async () => {
   if (!selected) return;
-  const data = await (await fetch("/api/prompts?case_id=" + encodeURIComponent(selected.id))).json();
+  const data = await (await fetch(apiUrl("/api/prompts?case_id=" + encodeURIComponent(selected.id)))).json();
   const geral = (data.caso?.geral || []).map((x) => "• " + x).join("\n") || "(nenhum)";
   const glob =
     Object.entries(data.global?.por_tipo || {})
@@ -279,7 +288,7 @@ document.getElementById("btn-salvar").onclick = async () => {
   if (!selected || !lastResult?.texto) return;
   setBusy(true, "Regravando Word + PDF…");
   try {
-    const r = await fetch("/api/salvar-docx", {
+    const r = await fetch(apiUrl("/api/salvar-docx"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -300,7 +309,7 @@ document.getElementById("btn-salvar").onclick = async () => {
 
 document.getElementById("btn-pasta").onclick = async () => {
   if (!selected) return;
-  await fetch("/api/abrir-pasta?case_id=" + encodeURIComponent(selected.id));
+  window.location.href = apiUrl("/api/baixar-pasta?case_id=" + encodeURIComponent(selected.id));
 };
 
 document.getElementById("btn-ajustes").onclick = () => {
@@ -325,7 +334,7 @@ document.getElementById("salvar-ajustes").onclick = async (ev) => {
     model: document.getElementById("api-model").value,
   };
   if (key && !key.startsWith("•")) body.api_key = key;
-  await fetch("/api/config", {
+  await fetch(apiUrl("/api/config"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

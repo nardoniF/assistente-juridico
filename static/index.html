@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Assistente Jurídico</title>
+  <title>Harvey.ai</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/ui/styles.css" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="ambiance" aria-hidden="true"></div>
@@ -15,9 +15,9 @@
   <div class="shell">
     <aside class="rail">
       <div class="brand">
-        <p class="brand-mark">Assistente</p>
-        <h1>Jurídico</h1>
-        <p class="brand-sub">Peças em Word e PDF · na sua máquina</p>
+        <p class="brand-mark">3n20 · produto</p>
+        <h1>Harvey.ai</h1>
+        <p class="brand-sub">Processos em PDF → peças em Word e PDF</p>
       </div>
 
       <label class="dropzone" id="dropzone" for="pdf">
@@ -48,7 +48,7 @@
           <p id="caso-atual" class="muted"></p>
         </div>
         <div class="stage-actions" id="stage-actions" hidden>
-          <button type="button" id="btn-pasta" class="ghost">Abrir pasta</button>
+          <button type="button" id="btn-pasta" class="ghost">Baixar pasta (ZIP)</button>
           <button type="button" id="btn-ver-prompts" class="ghost">Prompts</button>
         </div>
       </header>
@@ -167,6 +167,7 @@
     </form>
   </dialog>
 
-  <script src="/ui/app.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

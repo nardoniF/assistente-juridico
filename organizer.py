@@ -1,16 +1,28 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import unicodedata
 from pathlib import Path
 
-HOME_APP = Path.home() / "Documents" / "Assistente Juridico"
+# Web/SaaS: DATA_DIR=/data (Docker). Local: ./data ou Documents legado.
+_DEFAULT_LOCAL = Path(__file__).resolve().parent / "data"
+_LEGACY = Path.home() / "Documents" / "Assistente Juridico"
+if os.environ.get("DATA_DIR"):
+    HOME_APP = Path(os.environ["DATA_DIR"]).expanduser().resolve()
+elif os.environ.get("WEB_MODE", "").strip() in ("1", "true", "True", "yes"):
+    HOME_APP = _DEFAULT_LOCAL
+elif _LEGACY.exists():
+    HOME_APP = _LEGACY
+else:
+    HOME_APP = _DEFAULT_LOCAL
+
 PROCESSOS = HOME_APP / "Processos"
 CONFIG = HOME_APP / "config.json"
 
-# Padrão: Groq (gratuito) — chave em console.groq.com
+# Padrão: Groq (gratuito) — chave em console.groq.com ou env GROQ_API_KEY / API_KEY
 DEFAULT_CONFIG = {
     "provider": "groq",
     "provider_label": "Groq (gratuito)",
@@ -63,6 +75,12 @@ PRESETS = {
 }
 
 
+def web_mode() -> bool:
+    return os.environ.get("WEB_MODE", "").strip() in ("1", "true", "True", "yes") or bool(
+        os.environ.get("DATA_DIR")
+    )
+
+
 def ensure_dirs() -> None:
     PROCESSOS.mkdir(parents=True, exist_ok=True)
     HOME_APP.mkdir(parents=True, exist_ok=True)
@@ -79,22 +97,43 @@ def load_config() -> dict:
         data = json.loads(CONFIG.read_text(encoding="utf-8"))
     except Exception:
         data = {}
-    # migra config antiga
     if data.get("openai_api_key") and not data.get("api_key"):
         data["api_key"] = data["openai_api_key"]
     if data.get("openai_model") and not data.get("model"):
         data["model"] = data["openai_model"]
+
+    # Env vence arquivo (deploy web)
+    env_key = (
+        os.environ.get("API_KEY")
+        or os.environ.get("GROQ_API_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+        or ""
+    ).strip()
+    if env_key:
+        data["api_key"] = env_key
+    if os.environ.get("API_MODEL"):
+        data["model"] = os.environ["API_MODEL"].strip()
+    if os.environ.get("API_BASE_URL"):
+        data["base_url"] = os.environ["API_BASE_URL"].rstrip("/")
+    if os.environ.get("API_PROVIDER"):
+        data["provider"] = os.environ["API_PROVIDER"].strip()
     return data
 
 
 def save_config(data: dict) -> None:
     ensure_dirs()
     current = load_config()
+    # Não sobrescrever chave só-de-env no arquivo com vazio
     current.update(data)
-    # não guardar campos legados duplicados
     current.pop("openai_api_key", None)
     current.pop("openai_model", None)
     current.pop("openai_base_url", None)
+    # Se a chave veio só do ambiente, não gravar no disco em web
+    if web_mode() and (os.environ.get("API_KEY") or os.environ.get("GROQ_API_KEY")):
+        file_data = {k: v for k, v in current.items() if k != "api_key"}
+        file_data["api_key"] = ""
+        CONFIG.write_text(json.dumps(file_data, indent=2, ensure_ascii=False), encoding="utf-8")
+        return
     CONFIG.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
@@ -167,6 +206,7 @@ def list_cases() -> list[dict]:
             }
         )
     return out
+
 
 def case_dir(case_id: str) -> Path:
     d = (PROCESSOS / case_id).resolve()

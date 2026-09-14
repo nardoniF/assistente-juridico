@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: harvey-ai
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: WEB_MODE
+        value: "1"
+      - key: DATA_DIR
+        value: /data
+      - key: CORS_ORIGINS
+        value: "https://3n20.com.br,https://www.3n20.com.br"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SITE_PASSWORD
+        sync: false

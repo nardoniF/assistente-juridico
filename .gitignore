@@ -5,6 +5,7 @@ __pycache__/
 .env.*
 *.pem
 config.json
+data/
 _extract/
 _work/
 *.zip

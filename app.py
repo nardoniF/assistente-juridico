@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import io
 import json
+import os
+import secrets
+import subprocess
+import sys
 import traceback
+import zipfile
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 import docx_out
@@ -13,15 +20,28 @@ import extractor
 import llm
 import memory
 import organizer
-from organizer import DEFAULT_CONFIG, PRESETS
+from organizer import DEFAULT_CONFIG, PRESETS, web_mode
 import prompts
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 CACHE_NAME = "extrato.json"
 EXTRACT_VERSION = 3
+PRODUCT = "Harvey.ai"
+SITE_PASSWORD = (os.environ.get("SITE_PASSWORD") or "").strip()
 
-app = FastAPI(title="Assistente Jurídico")
+app = FastAPI(title=PRODUCT, version="1.0.0")
+
+# Front em 3n20.com.br/harvey → API neste host (Render/HF)
+_cors = os.environ.get("CORS_ORIGINS", "https://3n20.com.br,http://127.0.0.1:8765,http://localhost:8765")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in _cors.split(",") if o.strip()] + ["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.mount("/ui", StaticFiles(directory=STATIC), name="static")
 
 ACTION_MAP = {
@@ -42,9 +62,65 @@ ACTION_MAP = {
 }
 
 
+@app.middleware("http")
+async def optional_site_password(request: Request, call_next):
+    if not SITE_PASSWORD:
+        return await call_next(request)
+    if request.url.path in ("/api/health", "/health"):
+        return await call_next(request)
+    auth = request.headers.get("Authorization") or ""
+    cookie = request.cookies.get("harvey_gate") or ""
+    expected = secrets.compare_digest(cookie, SITE_PASSWORD) if cookie else False
+    if auth.startswith("Basic "):
+        import base64
+
+        try:
+            decoded = base64.b64decode(auth[6:]).decode("utf-8")
+            _user, pwd = decoded.split(":", 1)
+            expected = secrets.compare_digest(pwd, SITE_PASSWORD)
+        except Exception:
+            expected = False
+    if expected:
+        return await call_next(request)
+    if request.url.path.startswith("/api/"):
+        return Response('{"detail":"senha do site"}', status_code=401, media_type="application/json")
+    return Response(
+        "Harvey.ai — informe a senha (Authorization Basic).",
+        status_code=401,
+        headers={"WWW-Authenticate": 'Basic realm="Harvey.ai"'},
+    )
+
+
+@app.get("/health")
+@app.get("/api/health")
+def health():
+    return {"ok": True, "product": PRODUCT, "web": web_mode()}
+
+
 @app.get("/")
 def index():
     return FileResponse(STATIC / "index.html")
+
+
+@app.get("/styles.css")
+def styles_css():
+    return FileResponse(STATIC / "styles.css", media_type="text/css")
+
+
+@app.get("/app.js")
+def app_js():
+    return FileResponse(STATIC / "app.js", media_type="application/javascript")
+
+
+@app.get("/config.js")
+def config_js():
+    """Mesma origem: apiBase vazio."""
+    body = (
+        "window.HARVEY=window.HARVEY||{};"
+        "window.HARVEY.apiBase=window.HARVEY.apiBase||'';"
+        "window.HARVEY.product='Harvey.ai';"
+    )
+    return Response(body, media_type="application/javascript")
 
 
 @app.get("/api/config")
@@ -52,9 +128,14 @@ def get_config():
     cfg = organizer.load_config()
     key = cfg.get("api_key") or cfg.get("openai_api_key") or ""
     masked = ("••••" + key[-4:]) if len(key) >= 4 else ""
+    env_locked = bool(
+        (os.environ.get("API_KEY") or os.environ.get("GROQ_API_KEY") or "").strip()
+    )
     return {
+        "product": PRODUCT,
         "has_key": bool(key.strip()),
         "masked_key": masked,
+        "key_from_env": env_locked,
         "provider": cfg.get("provider") or DEFAULT_CONFIG["provider"],
         "provider_label": cfg.get("provider_label") or DEFAULT_CONFIG["provider_label"],
         "model": cfg.get("model") or cfg.get("openai_model") or DEFAULT_CONFIG["model"],
@@ -62,15 +143,19 @@ def get_config():
         "presets": PRESETS,
         "processos_dir": str(organizer.PROCESSOS),
         "aprendizado_global": str(memory.GLOBAL_FILE),
+        "web_mode": web_mode(),
         "custo_estimado": (
-            "Groq: gratuito com limites. "
-            "Gemini/OpenAI: pago conforme uso. Organizar pasta = grátis."
+            "Tudo gratuito no plano padrão: hosting free + Groq free. "
+            "Gemini/OpenAI só se você colar chave paga."
         ),
     }
 
 
 @app.post("/api/config")
 def set_config(payload: dict):
+    if (os.environ.get("API_KEY") or os.environ.get("GROQ_API_KEY") or "").strip():
+        # Em produção a chave fica no servidor; UI pode mudar só modelo/preset
+        payload = {k: v for k, v in payload.items() if k != "api_key"}
     allowed = {}
     if "api_key" in payload:
         allowed["api_key"] = (payload.get("api_key") or "").strip()
@@ -126,7 +211,6 @@ def _load_or_extract(case: Path, *, refresh: bool = False) -> dict:
     try:
         cache.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     except Exception:
-        # Se não der para gravar cache (permissão), segue mesmo assim.
         pass
     return data
 
@@ -138,6 +222,9 @@ async def importar(arquivo: UploadFile = File(...)):
     raw = await arquivo.read()
     if len(raw) < 100:
         raise HTTPException(400, "Arquivo vazio.")
+    # Limite amigável ao plano free (~80 MB)
+    if len(raw) > 80 * 1024 * 1024:
+        raise HTTPException(400, "PDF grande demais para o plano gratuito (máx. ~80 MB).")
     tmp.write_bytes(raw)
     try:
         data = extractor.extract_process(tmp)
@@ -204,7 +291,6 @@ def acao(
 
     extra = (instrucoes_extra or "").strip()
     learn = salvar_aprendizado not in ("0", "false", "False")
-    # Feedback no diálogo vira aprendizado deste processo (+ global do mesmo tipo)
     if extra and learn:
         memory.append_learning(case, tipo, extra, also_global=True)
 
@@ -212,7 +298,6 @@ def acao(
     meta = data.get("meta") or {}
     texto = data.get("texto") or ""
     titulo, _, base_name = ACTION_MAP[tipo]
-    # Se já salvou no aprendizado, combined_instructions já inclui o extra.
     user_prompt = _build_user_prompt(case, tipo, meta, texto, "" if learn else extra)
     learned = memory.combined_instructions(case, tipo, "" if learn else extra)
 
@@ -258,7 +343,6 @@ def refinar(
     feedback: str = Form(...),
     salvar_aprendizado: str = Form("1"),
 ):
-    """Reescreve a última peça com o feedback; atualiza Word+PDF e grava o prompt."""
     try:
         case = organizer.case_dir(case_id)
     except Exception:
@@ -357,7 +441,6 @@ def post_prompts(payload: dict):
 
 @app.post("/api/salvar-docx")
 def salvar_docx(payload: dict):
-    """Compat: grava Word + PDF a partir do texto do chat."""
     case_id = payload.get("case_id")
     texto = payload.get("texto") or ""
     nome = payload.get("nome") or "Peca.docx"
@@ -371,12 +454,45 @@ def salvar_docx(payload: dict):
     return {"ok": True, "arquivo": files["docx"], "pdf": files["pdf"], "pasta": str(case)}
 
 
+@app.get("/api/download")
+def download(case_id: str, arquivo: str):
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    name = Path(arquivo).name
+    path = (case / name).resolve()
+    if case.resolve() not in path.parents and path != case.resolve():
+        raise HTTPException(400, "Arquivo inválido.")
+    if not path.is_file():
+        raise HTTPException(404, "Arquivo não encontrado.")
+    return FileResponse(path, filename=name)
+
+
+@app.get("/api/baixar-pasta")
+def baixar_pasta(case_id: str):
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for p in case.iterdir():
+            if p.is_file() and p.name != CACHE_NAME:
+                zf.write(p, arcname=p.name)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{case_id}.zip"'},
+    )
+
+
 @app.get("/api/abrir-pasta")
 def abrir_pasta(case_id: str):
-    import os
-    import subprocess
-    import sys
-
+    """Local: abre Finder/Explorer. Web: use /api/baixar-pasta."""
+    if web_mode():
+        raise HTTPException(400, "Na web, use Baixar pasta (ZIP).")
     case = organizer.case_dir(case_id)
     if sys.platform.startswith("win"):
         os.startfile(case)  # type: ignore[attr-defined]
@@ -388,12 +504,12 @@ def abrir_pasta(case_id: str):
 
 
 if __name__ == "__main__":
-    import os
     import webbrowser
 
     import uvicorn
 
     organizer.ensure_dirs()
-    if os.environ.get("NO_BROWSER") != "1":
-        webbrowser.open("http://127.0.0.1:8765")
-    uvicorn.run(app, host="127.0.0.1", port=8765, log_level="info")
+    port = int(os.environ.get("PORT", "8765"))
+    if os.environ.get("NO_BROWSER") != "1" and not web_mode():
+        webbrowser.open(f"http://127.0.0.1:{port}")
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
