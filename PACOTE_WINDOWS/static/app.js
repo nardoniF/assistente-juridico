@@ -12,10 +12,17 @@ const chatWrap = document.getElementById("chat-wrap");
 const chat = document.getElementById("chat");
 const chatTitulo = document.getElementById("chat-titulo");
 const arquivosGerados = document.getElementById("arquivos-gerados");
+const metricsLine = document.getElementById("metrics-line");
+const checklistWrap = document.getElementById("checklist-wrap");
+const checklistEl = document.getElementById("checklist");
+const diffWrap = document.getElementById("diff-wrap");
+const diffBefore = document.getElementById("diff-before");
+const diffAfter = document.getElementById("diff-after");
 const ajustes = document.getElementById("ajustes");
 const promptsBox = document.getElementById("prompts-box");
 const busy = document.getElementById("busy");
 const busyText = document.getElementById("busy-text");
+const busySteps = document.getElementById("busy-steps");
 const toastEl = document.getElementById("toast");
 const busca = document.getElementById("busca-casos");
 
@@ -25,6 +32,35 @@ let lastTipo = null;
 let configCache = null;
 let allCasos = [];
 let toastTimer = null;
+let busyTimer = null;
+let busyStepIdx = 0;
+
+const STAGES = {
+  importar: [
+    "Recebendo o PDF…",
+    "Lendo capa e partes…",
+    "Criando pasta do processo…",
+    "Gravando processo.pdf único…",
+  ],
+  atualizar: [
+    "Recebendo autos novos…",
+    "Sobrepondo processo.pdf…",
+    "Limpando cache do extrato…",
+    "Pronto para a próxima peça…",
+  ],
+  gerar: [
+    "1/4 Lendo e indexando os autos…",
+    "2/4 Montando o prompt forense…",
+    "3/4 IA redigindo a peça…",
+    "4/4 Gravando Word + PDF…",
+  ],
+  refinar: [
+    "1/4 Lendo a peça atual…",
+    "2/4 Incorporando seu feedback…",
+    "3/4 IA reescrevendo (mesmo arquivo)…",
+    "4/4 Sobrepondo Word + PDF…",
+  ],
+};
 
 function apiUrl(path) {
   const base = ((window.HARVEY && window.HARVEY.apiBase) || "").replace(/\/$/, "");
@@ -44,12 +80,39 @@ function toast(msg, ms = 4200) {
   }, ms);
 }
 
-function setBusy(on, text) {
+function renderBusySteps(stages, activeIdx) {
+  busySteps.innerHTML = "";
+  stages.forEach((label, i) => {
+    const li = document.createElement("li");
+    li.textContent = label;
+    if (i < activeIdx) li.className = "done";
+    if (i === activeIdx) li.className = "active";
+    busySteps.appendChild(li);
+  });
+}
+
+function setBusy(on, text, stageKey) {
+  clearInterval(busyTimer);
+  busyTimer = null;
   busy.hidden = !on;
-  if (text) busyText.textContent = text;
   document.querySelectorAll("#acoes-wrap button[data-tipo], #btn-refinar").forEach((b) => {
     b.disabled = on;
   });
+  if (!on) {
+    busySteps.innerHTML = "";
+    return;
+  }
+  const stages = STAGES[stageKey] || [text || "Trabalhando…"];
+  busyStepIdx = 0;
+  busyText.textContent = text || stages[0];
+  renderBusySteps(stages, 0);
+  if (stages.length > 1) {
+    busyTimer = setInterval(() => {
+      busyStepIdx = Math.min(busyStepIdx + 1, stages.length - 1);
+      busyText.textContent = stages[busyStepIdx];
+      renderBusySteps(stages, busyStepIdx);
+    }, 9000);
+  }
 }
 
 function setStatus(el, text, kind = "") {
@@ -69,13 +132,13 @@ async function refreshConfig() {
     pasta + " · aprendizado: " + (configCache.aprendizado_global || "");
   document.getElementById("pasta-mini").textContent = configCache.has_key
     ? "Harvey · IA pronta · " + (configCache.provider_label || configCache.provider || "")
-    : "Configure Groq grátis em Ajustes";
+    : "Configure a IA em Ajustes (Gemini Pro recomendado)";
   document.getElementById("custo-info").textContent = configCache.custo_estimado || "";
   document.getElementById("api-key").placeholder = configCache.has_key
     ? configCache.masked_key
-    : "gsk_... ou AIza...";
+    : "AIza... / sk-... / gsk_...";
+  document.getElementById("api-key").disabled = !!configCache.key_from_env;
   if (configCache.key_from_env) {
-    document.getElementById("api-key").disabled = true;
     document.getElementById("api-key").placeholder = configCache.masked_key + " (servidor)";
   }
   const preset = document.getElementById("preset");
@@ -141,17 +204,114 @@ function selectCase(c) {
   renderLista(c.id);
 }
 
+function parseChecklist(texto) {
+  const block = (texto || "").match(/CHECKLIST FORENSICO([\s\S]*?)(?:\n\n[A-ZÁÉÍÓÚ]|$)/i);
+  const src = block ? block[1] : texto || "";
+  const lines = src
+    .split("\n")
+    .map((l) => l.replace(/^[-*•]\s*/, "").trim())
+    .filter((l) => /:\s*(SIM|NAO|NÃO|NA)\b/i.test(l));
+  return lines.map((line) => {
+    const m = line.match(/^(.*?):\s*(SIM|NAO|NÃO|NA)\b\s*[—\-–:]?\s*(.*)$/i);
+    if (!m) return null;
+    const val = m[2].toUpperCase().replace("NÃO", "NAO");
+    return { label: m[1].trim(), value: val, note: (m[3] || "").trim() };
+  }).filter(Boolean);
+}
+
+function renderChecklist(texto) {
+  const items = parseChecklist(texto);
+  checklistEl.innerHTML = "";
+  if (!items.length) {
+    checklistWrap.hidden = true;
+    return;
+  }
+  checklistWrap.hidden = false;
+  for (const it of items) {
+    const li = document.createElement("li");
+    li.className = it.value === "SIM" ? "ok" : it.value === "NA" ? "na" : "no";
+    li.innerHTML = `<span class="tag">${it.value}</span><span><strong>${it.label}</strong>${
+      it.note ? " — " + it.note : ""
+    }</span>`;
+    checklistEl.appendChild(li);
+  }
+}
+
+function simpleDiffHtml(before, after) {
+  const a = (before || "").split("\n");
+  const b = (after || "").split("\n");
+  const aSet = new Set(a);
+  const bSet = new Set(b);
+  const left = a
+    .map((line) =>
+      bSet.has(line)
+        ? escapeHtml(line)
+        : `<span class="del">${escapeHtml(line)}</span>`
+    )
+    .join("\n");
+  const right = b
+    .map((line) =>
+      aSet.has(line)
+        ? escapeHtml(line)
+        : `<span class="add">${escapeHtml(line)}</span>`
+    )
+    .join("\n");
+  return { left, right };
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function showDiff(antes, depois) {
+  if (!antes || !depois || antes === depois) {
+    diffWrap.hidden = true;
+    return;
+  }
+  const { left, right } = simpleDiffHtml(antes, depois);
+  diffBefore.innerHTML = left;
+  diffAfter.innerHTML = right;
+  diffWrap.hidden = false;
+}
+
+function showMetrics(data) {
+  const bits = [];
+  if (data.segundos != null) bits.push(`${data.segundos}s IA`);
+  if (data.refines != null) bits.push(`${data.refines} refine(s)`);
+  if (data.geracoes != null) bits.push(`${data.geracoes} geração(ões)`);
+  metricsLine.textContent = bits.length ? bits.join(" · ") : "";
+}
+
+function showResult(data, tituloExtra, { antes } = {}) {
+  chatWrap.hidden = false;
+  chatTitulo.textContent = (data.titulo || "Resultado") + (tituloExtra || "");
+  chat.textContent = data.texto || "";
+  const dx = data.arquivo_docx || data.arquivos?.docx;
+  const pf = data.arquivo_pdf || data.arquivos?.pdf;
+  arquivosGerados.textContent =
+    dx || pf ? `Arquivos: ${dx || "—"} + ${pf || "—"}` : "";
+  showMetrics(data);
+  renderChecklist(data.texto || "");
+  const prev = antes || data.texto_anterior;
+  if (prev) showDiff(prev, data.texto || "");
+  else diffWrap.hidden = true;
+  chat.scrollTop = 0;
+}
+
 async function importFile(file) {
   if (!file) return;
   setStatus(importStatus, "Lendo o PDF e criando a pasta…");
-  setBusy(true, "Importando processo…");
+  setBusy(true, "Importando processo…", "importar");
   const fd = new FormData();
   fd.append("arquivo", file);
   try {
     const r = await fetch(apiUrl("/api/importar"), { method: "POST", body: fd });
     const data = await r.json();
     if (!r.ok && !data.ok) throw new Error(data.detail || "falha");
-.setStatus(importStatus, "Pasta criada.", "ok");
+    setStatus(importStatus, "Pasta criada.", "ok");
     selected = { id: data.id, path: data.path, meta: data.meta };
     selectCase(selected);
     await refreshCasos(data.id);
@@ -167,7 +327,7 @@ async function importFile(file) {
 
 async function updateProcessFile(file) {
   if (!file || !selected) return;
-  setBusy(true, "Sobrescrevendo processo.pdf…");
+  setBusy(true, "Atualizando autos…", "atualizar");
   const fd = new FormData();
   fd.append("case_id", selected.id);
   fd.append("arquivo", file);
@@ -218,17 +378,6 @@ function learnFlag() {
   return document.getElementById("salvar-aprendizado").checked ? "1" : "0";
 }
 
-function showResult(data, tituloExtra) {
-  chatWrap.hidden = false;
-  chatTitulo.textContent = (data.titulo || "Resultado") + (tituloExtra || "");
-  chat.textContent = data.texto || "";
-  const dx = data.arquivo_docx || data.arquivos?.docx;
-  const pf = data.arquivo_pdf || data.arquivos?.pdf;
-  arquivosGerados.textContent =
-    dx || pf ? `Arquivos: ${dx || "—"} + ${pf || "—"}` : "";
-  chat.scrollTop = 0;
-}
-
 document.querySelectorAll("#acoes-wrap button[data-tipo]").forEach((btn) => {
   btn.addEventListener("click", async () => {
     if (!selected) return;
@@ -240,7 +389,7 @@ document.querySelectorAll("#acoes-wrap button[data-tipo]").forEach((btn) => {
       return;
     }
     lastTipo = tipo;
-    setBusy(true, "Lendo autos e gerando Word + PDF…");
+    setBusy(true, "Gerando peça…", "gerar");
     const fd = new FormData();
     fd.append("case_id", selected.id);
     fd.append("tipo", tipo);
@@ -259,7 +408,7 @@ document.querySelectorAll("#acoes-wrap button[data-tipo]").forEach((btn) => {
         document.getElementById("instrucoes-extra").value = "";
       }
       await refreshCasos(selected.id);
-      toast(`Pronto: ${dx} · ${pf}`);
+      toast(`Peça pronta: ${dx} · ${pf}`);
     } catch (e) {
       toast(e.message);
     } finally {
@@ -272,10 +421,11 @@ document.getElementById("btn-refinar").onclick = async () => {
   if (!selected) return;
   const feedback = document.getElementById("instrucoes-extra").value.trim();
   if (!feedback) {
-    toast("Escreva no diálogo o que faltou e clique em Refinar.");
+    toast("Escreva o que faltou; o Harvey reescreve a mesma peça.");
     return;
   }
-  setBusy(true, "Refinando e atualizando Word + PDF…");
+  const antes = lastResult?.texto || "";
+  setBusy(true, "Refinando peça…", "refinar");
   const fd = new FormData();
   fd.append("case_id", selected.id);
   fd.append("feedback", feedback);
@@ -285,10 +435,10 @@ document.getElementById("btn-refinar").onclick = async () => {
     const data = await r.json();
     if (!r.ok) throw new Error(data.detail || "falha");
     lastResult = data;
-    showResult(data, " (refinado)");
+    showResult(data, " (refinado)", { antes: data.texto_anterior || antes });
     if (learnFlag() === "1") document.getElementById("instrucoes-extra").value = "";
     await refreshCasos(selected.id);
-    toast("Peça refinada e arquivos atualizados.");
+    toast("Mesma peça sobrescrita · veja o diff.");
   } catch (e) {
     toast(e.message);
   } finally {
@@ -296,20 +446,40 @@ document.getElementById("btn-refinar").onclick = async () => {
   }
 };
 
+document.getElementById("btn-toggle-diff")?.addEventListener("click", () => {
+  const panes = diffWrap.querySelector(".diff-cols");
+  if (!panes) return;
+  const hidden = panes.hidden;
+  panes.hidden = !hidden;
+  document.getElementById("btn-toggle-diff").textContent = hidden
+    ? "Ocultar diff"
+    : "Mostrar diff";
+});
+
 document.getElementById("btn-ver-prompts").onclick = async () => {
   if (!selected) return;
-  const data = await (await fetch(apiUrl("/api/prompts?case_id=" + encodeURIComponent(selected.id)))).json();
+  const data = await (
+    await fetch(apiUrl("/api/prompts?case_id=" + encodeURIComponent(selected.id)))
+  ).json();
   const geral = (data.caso?.geral || []).map((x) => "• " + x).join("\n") || "(nenhum)";
   const glob =
     Object.entries(data.global?.por_tipo || {})
       .map(([k, arr]) => k + ":\n" + arr.map((x) => "  • " + x).join("\n"))
       .join("\n\n") || "(nenhum)";
+  const u = data.ultima || {};
+  const met =
+    u.refines != null
+      ? `\n\nÚLTIMA PEÇA · refines: ${u.refines} · gerações: ${u.geracoes || "—"} · ${
+          u.segundos != null ? u.segundos + "s" : ""
+        }`
+      : "";
   promptsBox.hidden = false;
   promptsBox.textContent =
     "PROMPTS DESTE PROCESSO\n" +
     geral +
     "\n\nAPRENDIZADO GLOBAL (por tipo de ação)\n" +
-    glob;
+    glob +
+    met;
 };
 
 document.getElementById("btn-salvar").onclick = async () => {
@@ -337,7 +507,9 @@ document.getElementById("btn-salvar").onclick = async () => {
 
 document.getElementById("btn-pasta").onclick = async () => {
   if (!selected) return;
-  window.location.href = apiUrl("/api/baixar-pasta?case_id=" + encodeURIComponent(selected.id));
+  window.location.href = apiUrl(
+    "/api/baixar-pasta?case_id=" + encodeURIComponent(selected.id)
+  );
 };
 
 document.getElementById("btn-ajustes").onclick = () => {

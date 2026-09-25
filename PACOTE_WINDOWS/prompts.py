@@ -13,7 +13,20 @@ Antes de redigir recurso ou defesa, você DEVE:
 2) Buscar nos trechos "COMPROVANTES — TRCT, RECIBOS, HOLERITES" se já houve pagamento daquela verba/período.
 3) Se encontrar recibo, holerite, TRCT ou demonstrativo que mostre pagamento, citar página e pedir exclusão, dedução ou compensação (art. 368 CC, art. 767 CLT, dedução na liquidação).
 4) Se NÃO encontrar comprovante no extrato, dizer que não consta e sugerir ao advogado conferir manualmente aquela página no PDF.
-5) Nunca ignore pagamentos documentados só porque a sentença condenou de novo."""
+5) Nunca ignore pagamentos documentados só porque a sentença condenou de novo.
+
+Ao final de TODA peça (não só resumo), inclua o bloco abaixo, sem omitir linhas:
+
+CHECKLIST FORENSICO
+- Tempestividade: SIM/NAO/NA — (nota curta)
+- Endereçamento e qualificação: SIM/NAO
+- Fatos com citação de fls.: SIM/NAO
+- Direito/fundamentação: SIM/NAO
+- Pedidos objetivos: SIM/NAO
+- Auditoria de pagamentos/dedução: SIM/NAO/NA
+- Jurisprudência só se existir no material ou for súmula genérica nomeada: SIM/NAO/NA
+- Pronto para protocolar (na sua avaliação): SIM/NAO
+"""
 
 AUDITORIA_BLOCK = """
 Formato obrigatório no início da resposta (antes da peça ou do resumo):
@@ -21,6 +34,10 @@ Formato obrigatório no início da resposta (antes da peça ou do resumo):
 AUDITORIA DOCUMENTAL
 | Item condenado/pedido | Pago nos autos? | Página/evidência | Tese (deduzir / excluir / não consta) |
 (repetir linhas para férias, 13º, intervalo, horas extras, aviso, FGTS, danos morais, etc.)
+"""
+
+CHECKLIST_HINT = """
+Lembrete: termine com o bloco CHECKLIST FORENSICO (SIM/NAO/NA em cada linha).
 """
 
 
@@ -240,11 +257,12 @@ Texto extraído dos autos (sentença e comprovantes priorizados):
 
 def append_instrucoes(prompt: str, instrucoes: str | None) -> str:
     extra = (instrucoes or "").strip()
-    if not extra:
-        return prompt
-    return (
-        prompt
-        + "\n\n--- INSTRUÇÕES ADICIONAIS DO ADVOGADO (prioridade sobre o modelo) ---\n"
-        + extra
-        + "\n"
-    )
+    out = prompt
+    if extra:
+        out = (
+            out
+            + "\n\n--- INSTRUÇÕES ADICIONAIS DO ADVOGADO (prioridade sobre o modelo) ---\n"
+            + extra
+            + "\n"
+        )
+    return out + "\n" + CHECKLIST_HINT

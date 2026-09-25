@@ -6,10 +6,11 @@ import os
 import secrets
 import subprocess
 import sys
+import time
 import traceback
 import zipfile
 from pathlib import Path
-
+from datetime import datetime, timezone
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -309,21 +310,57 @@ def _build_user_prompt(case: Path, tipo: str, meta: dict, texto: str, extra: str
     return prompts.append_instrucoes(base, learned)
 
 
-def _persist_peca(case: Path, tipo: str, titulo: str, body: str, base_name: str, instrucoes: str) -> dict:
+def _persist_peca(
+    case: Path,
+    tipo: str,
+    titulo: str,
+    body: str,
+    base_name: str,
+    instrucoes: str,
+    *,
+    segundos: float | None = None,
+    refine: bool = False,
+    texto_anterior: str | None = None,
+) -> dict:
     files = docx_out.save_peca(body, case, base_name, title=titulo)
-    memory.save_ultima(
-        case,
-        {
-            "tipo": tipo,
-            "titulo": titulo,
-            "texto": body,
-            "base": files["base"],
-            "docx": files["docx"],
-            "pdf": files["pdf"],
-            "instrucoes": instrucoes,
-        },
-    )
-    return files
+    prev = memory.load_ultima(case) or {}
+    same = prev.get("tipo") == tipo and prev.get("base") == files["base"]
+    refines = int(prev.get("refines") or 0)
+    if refine and same:
+        refines += 1
+    elif not same:
+        refines = 0
+    geracoes = int(prev.get("geracoes") or 0)
+    if not refine:
+        geracoes = (geracoes + 1) if same else 1
+    else:
+        geracoes = geracoes or 1
+    # limpa datetime gambiarra do persist
+    payload = {
+        "tipo": tipo,
+        "titulo": titulo,
+        "texto": body,
+        "base": files["base"],
+        "docx": files["docx"],
+        "pdf": files["pdf"],
+        "instrucoes": instrucoes,
+        "refines": refines,
+        "geracoes": geracoes,
+        "segundos": segundos,
+        "atualizado_em": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+    }
+    if texto_anterior is not None:
+        payload["texto_anterior"] = texto_anterior
+    memory.save_ultima(case, payload)
+    return {**files, "refines": refines, "geracoes": geracoes, "segundos": segundos}
+
+
+def _metrics_block(files: dict) -> dict:
+    return {
+        "refines": files.get("refines", 0),
+        "geracoes": files.get("geracoes", 0),
+        "segundos": files.get("segundos"),
+    }
 
 
 @app.post("/api/acao")
@@ -354,6 +391,7 @@ def acao(
     user_prompt = _build_user_prompt(case, tipo, meta, texto, "" if learn else extra)
     learned = memory.combined_instructions(case, tipo, "" if learn else extra)
 
+    t0 = time.perf_counter()
     try:
         body = llm.complete(prompts.SYSTEM, user_prompt)
     except llm.LlmError as e:
@@ -361,8 +399,12 @@ def acao(
     except Exception:
         traceback.print_exc()
         raise HTTPException(500, "Falha ao chamar o modelo.")
+    segundos = round(time.perf_counter() - t0, 1)
 
-    files = _persist_peca(case, tipo, titulo, body, base_name, learned)
+    files = _persist_peca(
+        case, tipo, titulo, body, base_name, learned, segundos=segundos, refine=False
+    )
+    metrics = _metrics_block(files)
 
     if modo == "chat":
         return {
@@ -375,6 +417,7 @@ def acao(
             "arquivos": files,
             "prompts_usados": learned,
             "sugestao_arquivo": files["docx"],
+            **metrics,
         }
 
     return {
@@ -387,6 +430,7 @@ def acao(
         "pasta": str(case),
         "meta": meta,
         "prompts_usados": learned,
+        **metrics,
     }
 
 
@@ -438,7 +482,11 @@ TRECHOS DOS AUTOS (para conferência):
 {texto_autos[:180000]}
 
 Capa/meta: {meta}
+
+{prompts.CHECKLIST_HINT}
 """
+    texto_anterior = ultima.get("texto") or ""
+    t0 = time.perf_counter()
     try:
         body = llm.complete(prompts.SYSTEM, refine_prompt)
     except llm.LlmError as e:
@@ -446,16 +494,29 @@ Capa/meta: {meta}
     except Exception:
         traceback.print_exc()
         raise HTTPException(500, "Falha ao refinar com o modelo.")
+    segundos = round(time.perf_counter() - t0, 1)
 
-    files = _persist_peca(case, tipo, titulo, body, base_name, learned)
+    files = _persist_peca(
+        case,
+        tipo,
+        titulo,
+        body,
+        base_name,
+        learned,
+        segundos=segundos,
+        refine=True,
+        texto_anterior=texto_anterior,
+    )
     return {
         "ok": True,
         "titulo": titulo,
         "texto": body,
+        "texto_anterior": texto_anterior,
         "arquivo_docx": files["docx"],
         "arquivo_pdf": files["pdf"],
         "pasta": str(case),
         "prompts_usados": learned,
+        **_metrics_block(files),
     }
 
 

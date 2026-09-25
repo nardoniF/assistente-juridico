@@ -99,11 +99,13 @@ Objetivo: melhor assistente jurídico prático do planeta — começando por **t
 
 ## Prioridade imediata (próximos 7 dias)
 
-1. Status de geração em etapas  
-2. Diff no refine  
-3. Preset IA paga (Gemini Pro / OpenAI) no deploy  
-4. Checklist pós-peça  
-5. Medir: tempo médio geração + nº de refines até “ok”
+1. ~~Status de geração em etapas~~ ✅  
+2. ~~Diff no refine~~ ✅  
+3. ~~Preset IA paga (Gemini Pro / OpenAI) na UI~~ ✅  
+4. ~~Checklist pós-peça~~ ✅  
+5. ~~Medir tempo + nº de refines~~ ✅  
+
+Próximo: OCR + índice de fls. (Fase 1).
 
 ---
 

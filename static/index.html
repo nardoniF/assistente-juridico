@@ -129,10 +129,34 @@
             <div>
               <p class="group-label">Prévia</p>
               <h3 id="chat-titulo">Resultado</h3>
+              <p id="metrics-line" class="micro"></p>
             </div>
             <button type="button" id="btn-salvar" class="ghost">Regravar Word + PDF</button>
           </div>
           <p id="arquivos-gerados" class="file-chips"></p>
+
+          <div id="checklist-wrap" class="checklist-wrap" hidden>
+            <p class="group-label">Checklist forense</p>
+            <ul id="checklist" class="checklist"></ul>
+          </div>
+
+          <div id="diff-wrap" class="diff-wrap" hidden>
+            <div class="diff-head">
+              <p class="group-label">Diff do refine</p>
+              <button type="button" id="btn-toggle-diff" class="ghost">Ocultar diff</button>
+            </div>
+            <div class="diff-cols">
+              <div>
+                <p class="micro">Antes</p>
+                <pre id="diff-before" class="diff-pane"></pre>
+              </div>
+              <div>
+                <p class="micro">Depois</p>
+                <pre id="diff-after" class="diff-pane"></pre>
+              </div>
+            </div>
+          </div>
+
           <article id="chat" class="preview"></article>
         </div>
       </section>
@@ -144,26 +168,27 @@
     <div class="busy-card">
       <div class="spinner" aria-hidden="true"></div>
       <p id="busy-text">Gerando…</p>
+      <ol id="busy-steps" class="busy-steps" aria-live="polite"></ol>
     </div>
   </div>
 
   <dialog id="ajustes">
     <form method="dialog" id="form-ajustes">
       <h2>Ajustes</h2>
-      <p class="muted">Sem cartão: use <strong>Groq (gratuito)</strong>. Organizar pastas funciona sem chave.</p>
+      <p class="muted">Para peça séria: <strong>Gemini Pro</strong> ou <strong>OpenAI</strong>. Groq é grátis para teste.</p>
       <label>Plano de IA
         <select id="preset">
-          <option value="groq_free">Groq — gratuito (recomendado)</option>
-          <option value="google_flash">Gemini Flash</option>
-          <option value="google_pro">Gemini Pro</option>
+          <option value="google_pro">Gemini Pro — qualidade (pago, recomendado)</option>
+          <option value="openai_mini">OpenAI GPT-4.1 mini — pago</option>
+          <option value="google_flash">Gemini Flash — rápido</option>
+          <option value="groq_free">Groq — gratuito (teste)</option>
           <option value="google_lite">Gemini Flash-Lite</option>
-          <option value="openai_mini">OpenAI GPT-4.1 mini</option>
         </select>
       </label>
       <label>Chave da API
-        <input id="api-key" type="password" autocomplete="off" placeholder="gsk_... (Groq) ou AIza... (Gemini)" />
+        <input id="api-key" type="password" autocomplete="off" placeholder="AIza... / sk-... / gsk_..." />
       </label>
-      <p class="muted micro">Groq: <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a></p>
+      <p class="muted micro">Groq: <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> · Gemini: Google AI Studio · OpenAI: platform.openai.com</p>
       <label>Modelo (avançado)
         <input id="api-model" type="text" />
       </label>
