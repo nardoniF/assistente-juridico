@@ -503,6 +503,11 @@ button:disabled {
   backdrop-filter: blur(6px);
 }
 
+/* Sem isso, display:grid vence o atributo hidden e o overlay aparece ao abrir a página */
+.busy[hidden] {
+  display: none !important;
+}
+
 .busy-card {
   display: grid;
   justify-items: center;
