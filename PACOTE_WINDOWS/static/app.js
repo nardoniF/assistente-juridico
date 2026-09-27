@@ -191,6 +191,69 @@ async function refreshCasos(selectId) {
   renderLista(selectId || selected?.id);
 }
 
+function renderIndice(meta) {
+  const box = document.getElementById("indice-lista");
+  const info = document.getElementById("indice-meta");
+  if (!box) return;
+  const indice = (meta && meta.indice) || [];
+  const pays = (meta && meta.paginas_pagamento) || [];
+  const ocr = (meta && meta.ocr_paginas) || [];
+  const extra = (meta && meta.extracao) || {};
+  box.innerHTML = "";
+  const bits = [];
+  if (meta && meta.paginas) bits.push(meta.paginas + " págs.");
+  if (indice.length) bits.push(indice.length + " marcos");
+  if (pays.length) bits.push(pays.length + " com comprovante");
+  if (ocr.length) bits.push(ocr.length + " via OCR");
+  else if (extra.ocr_disponivel === false) bits.push("OCR indisponível neste PC");
+  info.textContent = bits.join(" · ") || "Atualize o processo para montar o índice.";
+  const seen = new Set();
+  for (const item of indice) {
+    const key = item.tipo + ":" + item.page;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const span = document.createElement("span");
+    span.className = "indice-item";
+    span.innerHTML = `${item.tipo} <em>fl. ${item.page}</em>${item.ocr ? " · OCR" : ""}`;
+    box.appendChild(span);
+  }
+  for (const p of pays.slice(0, 12)) {
+    const key = "pay:" + p.page;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const span = document.createElement("span");
+    span.className = "indice-item";
+    span.innerHTML = `Comprovante <em>fl. ${p.page}</em>`;
+    box.appendChild(span);
+  }
+  if (!box.children.length) {
+    box.innerHTML = "<p class='micro'>Nenhum marco ainda. Anexe ou atualize o PDF.</p>";
+  }
+}
+
+function warnFolhas(texto, meta) {
+  const el = document.getElementById("fls-alerta");
+  if (!el) return;
+  const total = Number((meta && meta.paginas) || 0);
+  if (!total || !texto) {
+    el.hidden = true;
+    return;
+  }
+  const nums = new Set();
+  for (const m of texto.matchAll(/\bfls?\.?\s*(\d{1,5})\b/gi)) {
+    const n = Number(m[1]);
+    if (n > total) nums.add(n);
+  }
+  if (!nums.size) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  const list = [...nums].sort((a, b) => a - b).slice(0, 12).join(", ");
+  el.hidden = false;
+  el.textContent = `Folhas citadas fora do processo (${total} págs.): ${list}. Peça para o Harvey corrigir.`;
+}
+
 function selectCase(c) {
   selected = c;
   emptyState.hidden = true;
@@ -201,6 +264,7 @@ function selectCase(c) {
   stageEyebrow.textContent = "Processo ativo";
   casoTitulo.textContent = m.numero || c.id;
   casoAtual.textContent = `${(m.reclamante || "—").slice(0, 60)} × ${(m.reclamado || "—").slice(0, 60)} · ${c.path}`;
+  renderIndice(m);
   renderLista(c.id);
 }
 
@@ -295,6 +359,7 @@ function showResult(data, tituloExtra, { antes } = {}) {
     dx || pf ? `Arquivos: ${dx || "—"} + ${pf || "—"}` : "";
   showMetrics(data);
   renderChecklist(data.texto || "");
+  warnFolhas(data.texto || "", selected && selected.meta);
   const prev = antes || data.texto_anterior;
   if (prev) showDiff(prev, data.texto || "");
   else diffWrap.hidden = true;
@@ -373,6 +438,15 @@ dropzone.addEventListener("drop", (e) => {
 });
 
 busca.addEventListener("input", () => renderLista(selected?.id));
+
+document.querySelectorAll("#prompt-chips button[data-prompt]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const box = document.getElementById("instrucoes-extra");
+    const bit = btn.dataset.prompt || "";
+    box.value = box.value.trim() ? box.value.trim() + "\n" + bit : bit;
+    box.focus();
+  });
+});
 
 function learnFlag() {
   return document.getElementById("salvar-aprendizado").checked ? "1" : "0";

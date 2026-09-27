@@ -152,23 +152,67 @@ def extract_cover_meta(doc: fitz.Document) -> dict:
     }
 
 
+MAX_OCR_PAGES = 30
+_OCR_BROKEN = False
+
+
+def _needs_ocr(page: fitz.Page, text: str) -> bool:
+    if len((text or "").strip()) >= 80:
+        return False
+    try:
+        return bool(page.get_images(full=False))
+    except Exception:
+        return False
+
+
+def _ocr_page(page: fitz.Page) -> str:
+    """OCR de página escaneada (TRCT, holerite). Falha silencioso se não houver Tesseract."""
+    global _OCR_BROKEN
+    if _OCR_BROKEN:
+        return ""
+    try:
+        tp = page.get_textpage_ocr(language="por+eng", dpi=140, full=True)
+        return page.get_text(textpage=tp) or ""
+    except Exception:
+        _OCR_BROKEN = True
+        return ""
+
+
 def extract_process(pdf_path: Path, max_chars: int = 550_000) -> dict:
+    global _OCR_BROKEN
+    _OCR_BROKEN = False
     doc = fitz.open(pdf_path)
     try:
         meta = extract_cover_meta(doc)
         pages: list[str] = []
         index: list[dict] = []
         page_scores: list[tuple[int, list[str]]] = []
+        ocr_pages: list[int] = []
+        ocr_budget = MAX_OCR_PAGES
 
         for i in range(doc.page_count):
-            t = doc[i].get_text() or ""
+            page = doc[i]
+            t = page.get_text() or ""
+            if ocr_budget > 0 and _needs_ocr(page, t):
+                ocr = _ocr_page(page)
+                if ocr.strip():
+                    t = (t + "\n" + ocr).strip()
+                    ocr_pages.append(i + 1)
+                    ocr_budget -= 1
             pages.append(t)
             sc, hits = _score_page(t)
             page_scores.append((sc, hits))
             head = " ".join(t.split()[:40]).upper()
             for hint in HEADING_HINTS:
                 if hint in head or hint in t[:800].upper():
-                    index.append({"page": i + 1, "tipo": hint, "marcadores": hits[:8]})
+                    index.append(
+                        {
+                            "page": i + 1,
+                            "tipo": hint,
+                            "marcadores": hits[:8],
+                            "ocr": (i + 1) in ocr_pages,
+                        }
+                    )
                     break
 
         compact: list[dict] = []
@@ -262,11 +306,14 @@ def extract_process(pdf_path: Path, max_chars: int = 550_000) -> dict:
 
         meta["indice"] = compact
         meta["paginas_pagamento"] = payment_pages[:50]
+        meta["ocr_paginas"] = ocr_pages[:40]
         meta["extracao"] = {
             "paginas_selecionadas": len(wanted),
             "paginas_comprovante": len(pay_idx),
+            "ocr_paginas": len(ocr_pages),
+            "ocr_disponivel": not _OCR_BROKEN,
             "truncado": truncated,
-            "versao": 3,
+            "versao": 4,
         }
         return {"meta": meta, "texto": blob, "paginas": doc.page_count}
     finally:

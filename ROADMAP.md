@@ -105,7 +105,14 @@ Objetivo: melhor assistente jurídico prático do planeta — começando por **t
 4. ~~Checklist pós-peça~~ ✅  
 5. ~~Medir tempo + nº de refines~~ ✅  
 
-Próximo: OCR + índice de fls. (Fase 1).
+## Fase 1 em andamento
+
+1. ~~OCR em páginas-imagem (Tesseract, até 30 págs.)~~ ✅  
+2. ~~Índice de fls. na tela~~ ✅  
+3. ~~Alerta de folha citada fora do PDF~~ ✅  
+4. ~~Atalhos de diálogo (TRCT, laudo, fls., pedidos)~~ ✅  
+
+Próximo: extrato estruturado editável e cruzamento comprovante × condenação.
 
 ---
 

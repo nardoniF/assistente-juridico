@@ -27,7 +27,7 @@ import prompts
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 CACHE_NAME = "extrato.json"
-EXTRACT_VERSION = 3
+EXTRACT_VERSION = 4
 PRODUCT = "Harvey.ai"
 SITE_PASSWORD = (os.environ.get("SITE_PASSWORD") or "").strip()
 

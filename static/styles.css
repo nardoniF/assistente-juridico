@@ -541,6 +541,46 @@ button:disabled {
   opacity: 0.75;
 }
 
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.chips button {
+  padding: 8px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+}
+
+.indice-lista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.indice-item {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.indice-item em {
+  font-style: normal;
+  color: var(--accent-2);
+}
+
+.fls-alerta {
+  margin: 10px 0 0;
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .checklist-wrap {
   margin: 0 0 14px;
   padding: 12px 14px;

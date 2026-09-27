@@ -77,6 +77,12 @@
               <span>Guardar aprendizado</span>
             </label>
           </div>
+          <div class="chips" id="prompt-chips">
+            <button type="button" data-prompt="Cruze férias, 13º, aviso e FGTS com o TRCT e comprovantes. Cite as folhas. Peça dedução ou compensação do que já foi pago.">Cruzar TRCT</button>
+            <button type="button" data-prompt="Impugne o laudo: aponte o que não consta dos autos, o que contradiz holerites/ponto e o que deve ser desconsiderado.">Impugnar laudo</button>
+            <button type="button" data-prompt="Revise a tempestividade, os pedidos e as folhas citadas. Se alguma folha não existir no processo, marque NÃO CONSTA.">Revisar fls.</button>
+            <button type="button" data-prompt="A peça ficou incompleta nos pedidos. Reescreva os pedidos de forma objetiva, um por linha, sem inventar valor.">Pedidos objetivos</button>
+          </div>
           <textarea
             id="instrucoes-extra"
             rows="5"
@@ -87,6 +93,15 @@
             <p class="hint">Feedback → mesma peça Word/PDF reescrita. Outra ação = outro arquivo.</p>
           </div>
           <div id="prompts-box" class="prompts-box" hidden></div>
+        </div>
+
+        <div class="panel indice-panel" id="indice-wrap">
+          <div class="panel-head">
+            <h3>Índice dos autos</h3>
+            <p id="indice-meta" class="micro"></p>
+          </div>
+          <div id="indice-lista" class="indice-lista"></div>
+          <p id="fls-alerta" class="fls-alerta" hidden></p>
         </div>
 
         <div class="panel actions">
