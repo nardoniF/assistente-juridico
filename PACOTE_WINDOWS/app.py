@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 import contas
 import docx_out
+import sumulas
 import extractor
 import llm
 import memory
@@ -586,6 +587,7 @@ def _build_user_prompt(
             f"\nPrazo informado: {prazo}. Trate como lembrete. "
             "A tempestividade se confere no PJe. Não garanta o prazo.\n"
         )
+    cruz += "\n\n" + sumulas.bloco_biblioteca(texto) + "\n"
     _titulo, prompt_fn, _base = ACTION_MAP[tipo]
     if tipo == "personalizado":
         if not learned.strip() and not cruz:
@@ -952,22 +954,14 @@ def abrir_pasta(case_id: str):
     return {"ok": True}
 
 
-SUMULAS_TST = {
-    6, 7, 51, 85, 90, 126, 191, 212, 219, 228, 244, 264, 277, 294,
-    331, 338, 362, 366, 368, 369, 378, 381, 423, 426, 437, 443, 444, 449, 460,
-}
+@app.post("/api/conferir-sumulas")
+def conferir_sumulas(texto: str = Form(...)):
+    return sumulas.conferir(texto)
 
 
 def _sinais(texto: str, meta: dict, case: Path) -> dict:
-    import re
-
-    avisos = []
-    for m in re.finditer(r"S[úu]mula\s+(\d+)", texto or "", re.I):
-        n = int(m.group(1))
-        if n not in SUMULAS_TST:
-            avisos.append(
-                f"Súmula {n} não está na biblioteca local. Confira o enunciado no site do TST antes de protocolar."
-            )
+    checagem = sumulas.conferir(texto or "")
+    avisos = checagem["avisos"]
     indice = meta.get("indice") or []
     tipos = " ".join(
         (item.get("tipo") if isinstance(item, dict) else str(item)) for item in indice
@@ -988,6 +982,7 @@ def _sinais(texto: str, meta: dict, case: Path) -> dict:
     camadas = meta.get("camadas") or {}
     return {
         "jurisprudencia_avisos": avisos,
+        "jurisprudencia_conferidas": checagem["conferidas"],
         "sugestao_proxima": sugestao,
         "risco_acordo": risco,
         "camadas": camadas,

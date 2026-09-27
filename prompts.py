@@ -75,8 +75,10 @@ Capa:
 Texto:
 {texto}
 
-Para cada tese existente nos autos, traga enunciado, súmula/OJ, precedente (sem inventar número) e utilidade para a RECLAMADA.
-Inclua linha sobre dedução/compensação de valores já pagos se houver condenação de verbas rescisórias ou intervalo.
+Para cada tese existente nos autos, use só súmula cujo enunciado esteja na biblioteca anexada ao pedido.
+Se o número não estiver nessa biblioteca, escreva NÃO CONSTA DA BIBLIOTECA HARVEY. Não invente acórdão.
+Súmula cancelada no Livro do TST não serve de fundamento vigente.
+Inclua linha sobre dedução/compensação de valores já pagos se houver condenação de verbas rescisórias ou intervalo, usando a Súmula 18 apenas no texto oficial da biblioteca.
 """
 
 

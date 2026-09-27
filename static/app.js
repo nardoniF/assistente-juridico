@@ -567,6 +567,7 @@ function showResult(data, tituloExtra, { antes } = {}) {
     juris.hidden = !avisos.length;
     juris.textContent = avisos.join(" ");
   }
+  renderJuris(data.jurisprudencia_conferidas || [], data.jurisprudencia_avisos || []);
   renderChecklist(data.texto || "");
   warnFolhas(data.texto || "", selected && selected.meta);
   const prev = antes || data.texto_anterior;
@@ -574,6 +575,46 @@ function showResult(data, tituloExtra, { antes } = {}) {
   else diffWrap.hidden = true;
   chat.scrollTop = 0;
 }
+
+function renderJuris(conferidas, avisos) {
+  const box = document.getElementById("juris-lista");
+  const alerta = document.getElementById("juris-avisos");
+  if (alerta) {
+    alerta.hidden = !avisos.length;
+    alerta.textContent = (avisos || []).join(" ");
+  }
+  if (!box) return;
+  box.innerHTML = "";
+  (conferidas || []).forEach((item) => {
+    const card = document.createElement("article");
+    card.className = "juris-card" + (item.vigente ? "" : " cancelada");
+    const estado = item.vigente ? "Vigente no Livro do TST" : "Cancelada no Livro do TST";
+    card.innerHTML =
+      `<p class="micro">${estado}${item.nota ? " · " + escapeHtml(item.nota) : ""}</p>` +
+      `<h4>Súmula ${item.numero} — ${escapeHtml(item.titulo || "")}</h4>` +
+      `<p>${escapeHtml(item.enunciado || "")}</p>` +
+      `<p class="micro"><a href="${item.fonte}" target="_blank" rel="noopener">Livro de Súmulas do TST</a></p>`;
+    box.appendChild(card);
+  });
+}
+
+document.getElementById("btn-conferir-sumulas").onclick = async () => {
+  const texto = (lastResult && lastResult.texto) || document.getElementById("instrucoes-extra").value;
+  if (!texto.trim()) {
+    toast("Gere a peça ou cole no diálogo a súmula que quer conferir.");
+    return;
+  }
+  chatWrap.hidden = false;
+  const fd = new FormData();
+  fd.append("texto", texto);
+  const r = await fetch(apiUrl("/api/conferir-sumulas"), { method: "POST", body: fd });
+  const data = await r.json();
+  if (!r.ok) return toast(data.detail || "falha");
+  renderJuris(data.conferidas || [], data.avisos || []);
+  if (!(data.conferidas || []).length && !(data.avisos || []).length) {
+    toast("Nenhuma súmula citada nesse texto.");
+  }
+};
 
 function renderPeca(texto) {
   const lines = String(texto || "").split("\n");

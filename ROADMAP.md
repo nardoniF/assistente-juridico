@@ -116,10 +116,11 @@ Objetivo: melhor assistente jurídico prático do planeta — começando por **t
 7. ~~Peça aberta trava outras ações até “Peça fechada”~~ ✅  
 8. ~~PDF único de protocolo, nome estável para o PJe~~ ✅  
 9. ~~Prévia formatada, histórico do que mudou, folha clicável, camadas, OAB no PDF, login, juntar páginas, persona/área, prazo, WhatsApp (link), LGPD, auditoria, segredo, disclaimer, fila de PDF grande, modo claro, PT/EN/ES da interface, próxima peça, risco/acordo, jurisprudência conferida na biblioteca local~~ ✅  
+10. ~~Súmula citada abre o enunciado do Livro do TST e avisa se está cancelada~~ ✅  
 
 Fora do código (precisa de conta paga): domínio próprio, Render sem dormir, planos com cobrança, WhatsApp Business API, backup no Google Drive, app de loja.
 
-Próximo: publicar esta versão na URL.
+Próximo: prazo calculado em dias úteis, com o aviso de conferir no PJe.
 
 ---
 
