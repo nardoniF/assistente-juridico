@@ -129,3 +129,96 @@ def load_ultima(case: Path) -> dict | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+
+ESTADO = "pecas_estado.json"
+
+
+def load_estado(case: Path) -> dict:
+    path = case / ESTADO
+    if not path.exists():
+        return {"aberta": None, "tipos": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"aberta": None, "tipos": {}}
+    data.setdefault("aberta", None)
+    data.setdefault("tipos", {})
+    return data
+
+
+def save_estado(case: Path, data: dict) -> None:
+    (case / ESTADO).write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def registrar_peca_aberta(case: Path, payload: dict) -> None:
+    """A peça gerada ou refinada fica aberta até a advogada fechar."""
+    estado = load_estado(case)
+    tipo = payload.get("tipo") or "personalizado"
+    estado["tipos"][tipo] = {
+        "tipo": tipo,
+        "titulo": payload.get("titulo") or tipo,
+        "base": payload.get("base"),
+        "docx": payload.get("docx"),
+        "pdf": payload.get("pdf"),
+        "texto": payload.get("texto") or "",
+        "fechada": False,
+        "refines": payload.get("refines") or 0,
+    }
+    estado["aberta"] = tipo
+    save_estado(case, estado)
+
+
+def estado_publico(case: Path) -> dict:
+    estado = load_estado(case)
+    tipos = {}
+    for tipo, info in (estado.get("tipos") or {}).items():
+        tipos[tipo] = {
+            "tipo": tipo,
+            "titulo": info.get("titulo") or tipo,
+            "docx": info.get("docx"),
+            "pdf": info.get("pdf"),
+            "fechada": bool(info.get("fechada")),
+            "refines": info.get("refines") or 0,
+        }
+    return {"aberta": estado.get("aberta"), "tipos": tipos}
+
+
+def fechar_peca(case: Path) -> dict:
+    estado = load_estado(case)
+    tipo = estado.get("aberta")
+    if not tipo or tipo not in estado["tipos"]:
+        raise ValueError("Não há peça aberta para fechar.")
+    estado["tipos"][tipo]["fechada"] = True
+    estado["aberta"] = None
+    save_estado(case, estado)
+    return estado_publico(case)
+
+
+def reabrir_peca(case: Path, tipo: str) -> dict:
+    estado = load_estado(case)
+    if estado.get("aberta"):
+        aberta = estado["tipos"].get(estado["aberta"]) or {}
+        raise ValueError(
+            f"Feche “{aberta.get('titulo') or estado['aberta']}” antes de reabrir outra peça."
+        )
+    info = (estado.get("tipos") or {}).get(tipo)
+    if not info:
+        raise ValueError("Essa ação ainda não tem peça neste processo.")
+    info["fechada"] = False
+    estado["aberta"] = tipo
+    save_estado(case, estado)
+    save_ultima(
+        case,
+        {
+            "tipo": tipo,
+            "titulo": info.get("titulo") or tipo,
+            "texto": info.get("texto") or "",
+            "base": info.get("base"),
+            "docx": info.get("docx"),
+            "pdf": info.get("pdf"),
+            "fechada": False,
+            "refines": info.get("refines") or 0,
+        },
+    )
+    return estado_publico(case)

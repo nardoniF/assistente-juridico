@@ -100,6 +100,7 @@ function setBusy(on, text, stageKey) {
   });
   if (!on) {
     busySteps.innerHTML = "";
+    if (selected) applyLock(selected.estado_pecas);
     return;
   }
   const stages = STAGES[stageKey] || [text || "Trabalhando…"];
@@ -266,7 +267,87 @@ function selectCase(c) {
   casoAtual.textContent = `${(m.reclamante || "—").slice(0, 60)} × ${(m.reclamado || "—").slice(0, 60)} · ${c.path}`;
   renderIndice(m);
   renderExtrato(m);
+  applyLock(c.estado_pecas);
   renderLista(c.id);
+}
+
+function applyLock(estado) {
+  const box = document.getElementById("peca-estado");
+  const reabrir = document.getElementById("reabrir-box");
+  const aberta = estado && estado.aberta;
+  const tipos = (estado && estado.tipos) || {};
+  const atual = aberta ? tipos[aberta] : null;
+  if (box) {
+    if (atual) {
+      box.textContent = `Aberta: ${atual.titulo}. Refine o mesmo arquivo ou marque Peça fechada.`;
+    } else {
+      box.textContent = "Nenhuma peça aberta. Pode começar outra ação.";
+    }
+  }
+  document.querySelectorAll("#acoes-wrap button[data-tipo]").forEach((btn) => {
+    const tipo = btn.dataset.tipo;
+    const info = tipos[tipo];
+    btn.disabled = false;
+    if (aberta && tipo !== aberta) btn.disabled = true;
+    if (info && info.fechada && !aberta) btn.title = "Fechada. Reabra para editar o mesmo arquivo.";
+    else btn.title = "";
+  });
+  if (!reabrir) return;
+  reabrir.innerHTML = "";
+  Object.values(tipos).forEach((info) => {
+    if (!info.fechada || info.tipo === aberta) return;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "Reabrir " + (info.titulo || info.tipo);
+    b.onclick = () => reabrirPeca(info.tipo);
+    reabrir.appendChild(b);
+  });
+}
+
+async function syncSelected() {
+  await refreshCasos(selected && selected.id);
+  const fresh = allCasos.find((c) => c.id === (selected && selected.id));
+  if (fresh) {
+    selected = fresh;
+    applyLock(fresh.estado_pecas);
+  }
+}
+
+async function fecharPeca() {
+  if (!selected) return;
+  setBusy(true, "Fechando a peça…");
+  const fd = new FormData();
+  fd.append("case_id", selected.id);
+  try {
+    const r = await fetch(apiUrl("/api/fechar-peca"), { method: "POST", body: fd });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || "falha");
+    await syncSelected();
+    toast("Peça fechada. Pode começar outra ação.");
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function reabrirPeca(tipo) {
+  if (!selected) return;
+  setBusy(true, "Reabrindo a peça…");
+  const fd = new FormData();
+  fd.append("case_id", selected.id);
+  fd.append("tipo", tipo);
+  try {
+    const r = await fetch(apiUrl("/api/reabrir-peca"), { method: "POST", body: fd });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || "falha");
+    await syncSelected();
+    toast("Peça reaberta. Refine o mesmo arquivo.");
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    setBusy(false);
+  }
 }
 
 function folhasTexto(arr) {
@@ -559,7 +640,7 @@ document.querySelectorAll("#acoes-wrap button[data-tipo]").forEach((btn) => {
       if (instrucoes && learnFlag() === "1") {
         document.getElementById("instrucoes-extra").value = "";
       }
-      await refreshCasos(selected.id);
+      await syncSelected();
       toast(`Peça pronta: ${dx} · ${pf}`);
     } catch (e) {
       toast(e.message);
@@ -589,7 +670,7 @@ document.getElementById("btn-refinar").onclick = async () => {
     lastResult = data;
     showResult(data, " (refinado)", { antes: data.texto_anterior || antes });
     if (learnFlag() === "1") document.getElementById("instrucoes-extra").value = "";
-    await refreshCasos(selected.id);
+    await syncSelected();
     toast("Mesma peça sobrescrita · veja o diff.");
   } catch (e) {
     toast(e.message);
@@ -607,6 +688,8 @@ document.getElementById("btn-toggle-diff")?.addEventListener("click", () => {
     ? "Ocultar diff"
     : "Mostrar diff";
 });
+
+document.getElementById("btn-fechar").onclick = () => fecharPeca();
 
 document.getElementById("btn-ver-prompts").onclick = async () => {
   if (!selected) return;

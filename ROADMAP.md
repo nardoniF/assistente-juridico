@@ -113,8 +113,9 @@ Objetivo: melhor assistente jurídico prático do planeta — começando por **t
 4. ~~Atalhos de diálogo (TRCT, laudo, fls., pedidos)~~ ✅  
 5. ~~Extrato editável (partes, valor, datas)~~ ✅  
 6. ~~Cruzamento comprovante × condenação~~ ✅  
+7. ~~Peça aberta trava outras ações até “Peça fechada”~~ ✅  
 
-Próximo: travar a peça até a advogada marcar “fechada”.
+Próximo: exportação com nome estável para o PJe.
 
 ---
 

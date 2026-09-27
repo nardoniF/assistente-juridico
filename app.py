@@ -303,6 +303,32 @@ def salvar_extrato(payload: dict):
     return {"ok": True, "meta": meta}
 
 
+@app.post("/api/fechar-peca")
+def fechar_peca(case_id: str = Form(...)):
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    try:
+        estado = memory.fechar_peca(case)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "estado_pecas": estado}
+
+
+@app.post("/api/reabrir-peca")
+def reabrir_peca(case_id: str = Form(...), tipo: str = Form(...)):
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    try:
+        estado = memory.reabrir_peca(case, tipo)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "estado_pecas": estado}
+
+
 @app.post("/api/importar")
 async def importar(arquivo: UploadFile = File(...)):
     """Novo processo (ou mesmo número): copia PDF → pasta nomeada → processo.pdf único."""
@@ -441,11 +467,13 @@ def _persist_peca(
         "geracoes": geracoes,
         "segundos": segundos,
         "atualizado_em": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+        "fechada": False,
     }
     if texto_anterior is not None:
         payload["texto_anterior"] = texto_anterior
     memory.save_ultima(case, payload)
-    return {**files, "refines": refines, "geracoes": geracoes, "segundos": segundos}
+    memory.registrar_peca_aberta(case, payload)
+    return {**files, "refines": refines, "geracoes": geracoes, "segundos": segundos, "fechada": False}
 
 
 def _metrics_block(files: dict) -> dict:
@@ -454,6 +482,31 @@ def _metrics_block(files: dict) -> dict:
         "geracoes": files.get("geracoes", 0),
         "segundos": files.get("segundos"),
     }
+
+
+def _guard_nova_acao(case: Path, tipo: str) -> None:
+    estado = memory.load_estado(case)
+    aberta = estado.get("aberta")
+    info_tipo = (estado.get("tipos") or {}).get(tipo) or {}
+    if aberta:
+        atual = (estado.get("tipos") or {}).get(aberta) or {}
+        titulo = atual.get("titulo") or aberta
+        if aberta == tipo:
+            raise HTTPException(
+                400,
+                f"“{titulo}” ainda está aberta. Use Refinar para mudar o mesmo arquivo, "
+                "ou marque Peça fechada.",
+            )
+        raise HTTPException(
+            400,
+            f"Feche “{titulo}” antes de começar outra ação.",
+        )
+    if info_tipo.get("fechada"):
+        titulo = info_tipo.get("titulo") or tipo
+        raise HTTPException(
+            400,
+            f"“{titulo}” já está fechada. Reabra essa peça para editar o mesmo arquivo.",
+        )
 
 
 @app.post("/api/acao")
@@ -471,6 +524,7 @@ def acao(
 
     if tipo not in ACTION_MAP:
         raise HTTPException(400, "Ação desconhecida.")
+    _guard_nova_acao(case, tipo)
 
     extra = (instrucoes_extra or "").strip()
     learn = salvar_aprendizado not in ("0", "false", "False")
@@ -545,6 +599,11 @@ def refinar(
     ultima = memory.load_ultima(case)
     if not ultima or not ultima.get("texto"):
         raise HTTPException(400, "Não há peça gerada neste processo para refinar. Gere uma ação antes.")
+    if memory.load_estado(case).get("aberta") != (ultima.get("tipo") or ""):
+        raise HTTPException(
+            400,
+            "Essa peça está fechada. Reabra para continuar no mesmo arquivo.",
+        )
 
     tipo = ultima.get("tipo") or "personalizado"
     titulo = ultima.get("titulo") or "Peça"

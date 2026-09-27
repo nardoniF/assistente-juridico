@@ -90,8 +90,10 @@
           ></textarea>
           <div class="toolbar">
             <button type="button" id="btn-refinar" class="accent">Refinar esta peça (sobrepoe)</button>
-            <p class="hint">Feedback → mesma peça Word/PDF reescrita. Outra ação = outro arquivo.</p>
+            <button type="button" id="btn-fechar" class="ghost">Peça fechada</button>
+            <p class="hint" id="peca-estado">Sem peça aberta. A primeira ação cria o arquivo.</p>
           </div>
+          <div id="reabrir-box" class="chips"></div>
           <div id="prompts-box" class="prompts-box" hidden></div>
         </div>
 

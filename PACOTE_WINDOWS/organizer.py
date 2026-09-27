@@ -181,6 +181,12 @@ def overwrite_processo_pdf(case_dir: Path, src: Path, meta: dict | None = None) 
     return dest_pdf
 
 
+def _estado_publico(case_dir: Path) -> dict:
+    import memory
+
+    return memory.estado_publico(case_dir)
+
+
 def list_cases() -> list[dict]:
     ensure_dirs()
     out = []
@@ -218,6 +224,7 @@ def list_cases() -> list[dict]:
                 "arquivos": docs,
                 "tem_processo": has_processo,
                 "prompts_salvos": prompts_n,
+                "estado_pecas": _estado_publico(d),
             }
         )
     return out
