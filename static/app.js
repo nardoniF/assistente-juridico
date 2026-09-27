@@ -265,7 +265,85 @@ function selectCase(c) {
   casoTitulo.textContent = m.numero || c.id;
   casoAtual.textContent = `${(m.reclamante || "—").slice(0, 60)} × ${(m.reclamado || "—").slice(0, 60)} · ${c.path}`;
   renderIndice(m);
+  renderExtrato(m);
   renderLista(c.id);
+}
+
+function folhasTexto(arr) {
+  return (arr || []).join(", ");
+}
+
+function folhasLista(text) {
+  return String(text || "")
+    .split(/[^\d]+/)
+    .map((n) => Number(n))
+    .filter((n) => n > 0);
+}
+
+function renderExtrato(meta) {
+  const ex = (meta && meta.extrato) || {};
+  document.getElementById("ex-numero").value = ex.numero || meta.numero || "";
+  document.getElementById("ex-autuacao").value = ex.autuacao || meta.autuacao || "";
+  document.getElementById("ex-valor").value = ex.valor_causa || meta.valor_causa || "";
+  document.getElementById("ex-reclamante").value = ex.reclamante || meta.reclamante || "";
+  document.getElementById("ex-reclamado").value = ex.reclamado || meta.reclamado || "";
+  const body = document.querySelector("#cruzamento tbody");
+  body.innerHTML = "";
+  const rows = ex.verbas || meta.cruzamento || [];
+  rows.forEach((row, i) => {
+    const tr = document.createElement("tr");
+    const risco = row.condenado === "sim" && row.pago === "sim";
+    tr.className = risco ? "risco" : row.pago === "sim" ? "ok" : "";
+    tr.innerHTML = `
+      <td><input data-k="verba" data-i="${i}" value="${escapeAttr(row.verba || "")}" /></td>
+      <td><select data-k="condenado" data-i="${i}">
+        <option value="sim">sim</option>
+        <option value="nao">não</option>
+        <option value="incerto">incerto</option>
+      </select></td>
+      <td><select data-k="pago" data-i="${i}">
+        <option value="sim">sim</option>
+        <option value="nao">não</option>
+      </select></td>
+      <td><input data-k="folhas_sentenca" data-i="${i}" value="${escapeAttr(folhasTexto(row.folhas_sentenca))}" /></td>
+      <td><input data-k="folhas_pago" data-i="${i}" value="${escapeAttr(folhasTexto(row.folhas_pago))}" /></td>
+      <td><input data-k="tese" data-i="${i}" value="${escapeAttr(row.tese || "")}" /></td>`;
+    body.appendChild(tr);
+    tr.querySelector('[data-k="condenado"]').value = row.condenado || "incerto";
+    tr.querySelector('[data-k="pago"]').value = row.pago || "nao";
+    tr.dataset.id = row.id || "";
+  });
+}
+
+function escapeAttr(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
+}
+
+function coletarExtrato() {
+  const verbas = [];
+  document.querySelectorAll("#cruzamento tbody tr").forEach((tr) => {
+    const get = (k) => tr.querySelector(`[data-k="${k}"]`).value;
+    verbas.push({
+      id: tr.dataset.id || "",
+      verba: get("verba"),
+      condenado: get("condenado"),
+      pago: get("pago"),
+      folhas_sentenca: folhasLista(get("folhas_sentenca")),
+      folhas_pago: folhasLista(get("folhas_pago")),
+      tese: get("tese"),
+    });
+  });
+  return {
+    numero: document.getElementById("ex-numero").value,
+    autuacao: document.getElementById("ex-autuacao").value,
+    valor_causa: document.getElementById("ex-valor").value,
+    reclamante: document.getElementById("ex-reclamante").value,
+    reclamado: document.getElementById("ex-reclamado").value,
+    verbas,
+  };
 }
 
 function parseChecklist(texto) {
@@ -574,6 +652,28 @@ document.getElementById("btn-salvar").onclick = async () => {
     const data = await r.json();
     toast(data.ok ? `Regravado: ${data.arquivo} + ${data.pdf}` : "Não salvou.");
     refreshCasos(selected.id);
+  } finally {
+    setBusy(false);
+  }
+};
+
+document.getElementById("btn-salvar-extrato").onclick = async () => {
+  if (!selected) return;
+  setBusy(true, "Salvando extrato…");
+  try {
+    const r = await fetch(apiUrl("/api/extrato"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ case_id: selected.id, extrato: coletarExtrato() }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || "falha");
+    selected.meta = data.meta;
+    renderExtrato(data.meta);
+    toast("Extrato salvo. A próxima peça usa esta versão.");
+    await refreshCasos(selected.id);
+  } catch (e) {
+    toast(e.message);
   } finally {
     setBusy(false);
   }

@@ -89,6 +89,66 @@ STRONG_DOC_MARKERS = (
     "INDEFIRO",
 )
 
+VERBAS = (
+    ("ferias", "Férias + 1/3", ("FÉRIAS", "FERIAS", "TERÇO CONSTITUCIONAL")),
+    ("decimo", "13º salário", ("13º", "DECIMO TERCEIRO", "DÉCIMO TERCEIRO", "13 SAL")),
+    ("intervalo", "Intervalo", ("INTERVALO", "INTRAJORNADA")),
+    ("he", "Horas extras", ("HORAS EXTRAS", "HORA EXTRA")),
+    ("fgts", "FGTS", ("FGTS", "GRRF")),
+    ("aviso", "Aviso prévio", ("AVISO PRÉVIO", "AVISO PREVIO")),
+    ("moral", "Danos morais", ("DANOS MORAIS", "DANO MORAL")),
+)
+
+
+def _hits(pages: list[str], indices: list[int], kws: tuple[str, ...]) -> list[int]:
+    found = []
+    for i in indices:
+        if 0 <= i < len(pages) and any(k in _norm(pages[i]) for k in kws):
+            found.append(i + 1)
+    return found
+
+
+def build_cruzamento(pages: list[str], sent_idx: list[int], pay_idx: list[int]) -> list[dict]:
+    """Cruza palavras da sentença com comprovantes. Heurística — a advogada corrige."""
+    rows = []
+    for key, label, kws in VERBAS:
+        folhas_sentenca = _hits(pages, sent_idx, kws)
+        folhas_pago = _hits(pages, pay_idx, kws)
+        condenado = "sim" if folhas_sentenca else "incerto"
+        pago = "sim" if folhas_pago else "nao"
+        if condenado == "sim" and pago == "sim":
+            tese = "Possível bis in idem — pedir dedução/compensação"
+        elif condenado == "sim":
+            tese = "Condenação sem estas palavras nos comprovantes lidos"
+        elif pago == "sim":
+            tese = "Pagamento localizado; condenação não achada com estas palavras"
+        else:
+            tese = "Não localizado no extrato"
+        rows.append(
+            {
+                "id": key,
+                "verba": label,
+                "condenado": condenado,
+                "pago": pago,
+                "folhas_sentenca": folhas_sentenca[:8],
+                "folhas_pago": folhas_pago[:8],
+                "tese": tese,
+            }
+        )
+    return rows
+
+
+def cruzamento_texto(rows: list[dict]) -> str:
+    lines = ["=== CRUZAMENTO COMPROVANTE × CONDENAÇÃO (heurística, conferir) ==="]
+    for r in rows:
+        fs = ", ".join(str(n) for n in r["folhas_sentenca"]) or "—"
+        fp = ", ".join(str(n) for n in r["folhas_pago"]) or "—"
+        lines.append(
+            f"- {r['verba']}: condenado={r['condenado']} (fls. {fs}) | "
+            f"pago={r['pago']} (fls. {fp}) | {r['tese']}"
+        )
+    return "\n".join(lines)
+
 
 def _norm(s: str) -> str:
     return (s or "").upper()
@@ -298,6 +358,9 @@ def extract_process(pdf_path: Path, max_chars: int = 550_000) -> dict:
             sections.append(block("PROVA ORAL — ATAS", oral_idx[:40]))
         sections.append(block("INICIAL E DEMAIS TRECHOS", rest[:100]))
 
+        cruzamento = build_cruzamento(pages, sent_idx, pay_idx)
+        sections.insert(1, cruzamento_texto(cruzamento))
+
         blob = "\n".join(sections)
         truncated = False
         if len(blob) > max_chars:
@@ -307,13 +370,22 @@ def extract_process(pdf_path: Path, max_chars: int = 550_000) -> dict:
         meta["indice"] = compact
         meta["paginas_pagamento"] = payment_pages[:50]
         meta["ocr_paginas"] = ocr_pages[:40]
+        meta["cruzamento"] = cruzamento
+        meta["extrato"] = {
+            "numero": meta.get("numero") or "",
+            "reclamante": meta.get("reclamante") or "",
+            "reclamado": meta.get("reclamado") or "",
+            "valor_causa": meta.get("valor_causa") or "",
+            "autuacao": meta.get("autuacao") or "",
+            "verbas": cruzamento,
+        }
         meta["extracao"] = {
             "paginas_selecionadas": len(wanted),
             "paginas_comprovante": len(pay_idx),
             "ocr_paginas": len(ocr_pages),
             "ocr_disponivel": not _OCR_BROKEN,
             "truncado": truncated,
-            "versao": 4,
+            "versao": 5,
         }
         return {"meta": meta, "texto": blob, "paginas": doc.page_count}
     finally:

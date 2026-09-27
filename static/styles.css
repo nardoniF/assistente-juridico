@@ -581,6 +581,53 @@ button:disabled {
   line-height: 1.4;
 }
 
+.extrato-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.extrato-grid label.span2 { grid-column: span 2; }
+
+.extrato-grid input,
+.cruzamento input,
+.cruzamento select {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--ink);
+  font: 500 13px var(--font-ui);
+}
+
+.table-wrap { overflow-x: auto; }
+
+.cruzamento {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.cruzamento th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 6px 6px 8px;
+}
+
+.cruzamento td { padding: 4px 6px; vertical-align: top; }
+
+.cruzamento tr.risco td { background: rgba(217, 137, 122, 0.08); }
+.cruzamento tr.ok td { background: rgba(61, 155, 132, 0.08); }
+
+@media (max-width: 800px) {
+  .extrato-grid { grid-template-columns: 1fr; }
+  .extrato-grid label.span2 { grid-column: auto; }
+}
+
 .checklist-wrap {
   margin: 0 0 14px;
   padding: 12px 14px;

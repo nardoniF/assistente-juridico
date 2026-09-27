@@ -111,8 +111,10 @@ Objetivo: melhor assistente jurídico prático do planeta — começando por **t
 2. ~~Índice de fls. na tela~~ ✅  
 3. ~~Alerta de folha citada fora do PDF~~ ✅  
 4. ~~Atalhos de diálogo (TRCT, laudo, fls., pedidos)~~ ✅  
+5. ~~Extrato editável (partes, valor, datas)~~ ✅  
+6. ~~Cruzamento comprovante × condenação~~ ✅  
 
-Próximo: extrato estruturado editável e cruzamento comprovante × condenação.
+Próximo: travar a peça até a advogada marcar “fechada”.
 
 ---
 

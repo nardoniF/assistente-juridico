@@ -27,7 +27,7 @@ import prompts
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 CACHE_NAME = "extrato.json"
-EXTRACT_VERSION = 4
+EXTRACT_VERSION = 5
 PRODUCT = "Harvey.ai"
 SITE_PASSWORD = (os.environ.get("SITE_PASSWORD") or "").strip()
 
@@ -213,7 +213,94 @@ def _load_or_extract(case: Path, *, refresh: bool = False) -> dict:
         cache.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass
+    _sync_case_meta(case, data)
     return data
+
+
+def _sync_case_meta(case: Path, data: dict) -> None:
+    """Grava meta.json e preserva extrato editado pela advogada."""
+    path = case / "meta.json"
+    saved = {}
+    if path.exists():
+        try:
+            saved = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            saved = {}
+    meta = data.setdefault("meta", {})
+    if saved.get("extrato_manual") and isinstance(saved.get("extrato"), dict):
+        meta["extrato"] = saved["extrato"]
+        meta["extrato_manual"] = True
+        meta["cruzamento"] = (saved.get("extrato") or {}).get("verbas") or meta.get("cruzamento")
+        for key in ("numero", "reclamante", "reclamado", "valor_causa", "autuacao"):
+            if saved.get(key):
+                meta[key] = saved[key]
+    path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+@app.post("/api/extrato")
+def salvar_extrato(payload: dict):
+    case_id = payload.get("case_id")
+    extrato = payload.get("extrato")
+    if not case_id or not isinstance(extrato, dict):
+        raise HTTPException(400, "Informe case_id e extrato.")
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    path = case / "meta.json"
+    meta = {}
+    if path.exists():
+        try:
+            meta = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            meta = {}
+    extrato["numero"] = (extrato.get("numero") or "").strip()
+    extrato["reclamante"] = (extrato.get("reclamante") or "").strip()
+    extrato["reclamado"] = (extrato.get("reclamado") or "").strip()
+    extrato["valor_causa"] = (extrato.get("valor_causa") or "").strip()
+    extrato["autuacao"] = (extrato.get("autuacao") or "").strip()
+    verbas = extrato.get("verbas") if isinstance(extrato.get("verbas"), list) else []
+    clean = []
+    for row in verbas:
+        if not isinstance(row, dict):
+            continue
+        clean.append(
+            {
+                "id": row.get("id") or "",
+                "verba": (row.get("verba") or "").strip(),
+                "condenado": row.get("condenado") if row.get("condenado") in ("sim", "nao", "incerto") else "incerto",
+                "pago": row.get("pago") if row.get("pago") in ("sim", "nao") else "nao",
+                "folhas_sentenca": row.get("folhas_sentenca") or [],
+                "folhas_pago": row.get("folhas_pago") or [],
+                "tese": (row.get("tese") or "").strip(),
+            }
+        )
+    extrato["verbas"] = clean
+    meta["extrato"] = extrato
+    meta["extrato_manual"] = True
+    meta["cruzamento"] = clean
+    for key in ("numero", "reclamante", "reclamado", "valor_causa", "autuacao"):
+        if extrato.get(key):
+            meta[key] = extrato[key]
+    path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    cache = case / CACHE_NAME
+    if cache.exists():
+        try:
+            cached = json.loads(cache.read_text(encoding="utf-8"))
+            cached.setdefault("meta", {}).update(
+                {
+                    "extrato": extrato,
+                    "extrato_manual": True,
+                    "cruzamento": clean,
+                    "numero": meta.get("numero"),
+                    "reclamante": meta.get("reclamante"),
+                    "reclamado": meta.get("reclamado"),
+                }
+            )
+            cache.write_text(json.dumps(cached, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+    return {"ok": True, "meta": meta}
 
 
 @app.post("/api/importar")
@@ -297,16 +384,22 @@ async def atualizar_processo(case_id: str = Form(...), arquivo: UploadFile = Fil
 
 def _build_user_prompt(case: Path, tipo: str, meta: dict, texto: str, extra: str = "") -> str:
     learned = memory.combined_instructions(case, tipo, extra)
+    rows = ((meta.get("extrato") or {}).get("verbas")) or meta.get("cruzamento") or []
+    cruz = ""
+    if rows:
+        cruz = "\n\n" + extractor.cruzamento_texto(rows)
+        if meta.get("extrato_manual"):
+            cruz += "\nExtrato corrigido pela advogada: priorize estes dados de capa e verbas.\n"
     _titulo, prompt_fn, _base = ACTION_MAP[tipo]
     if tipo == "personalizado":
-        if not learned.strip():
+        if not learned.strip() and not cruz:
             raise HTTPException(
                 400,
                 "No pedido personalizado, escreva no diálogo o que a IA deve fazer "
                 "(ou use um aprendizado já salvo neste processo).",
             )
-        return prompts.prompt_personalizado(meta, texto, learned)
-    base = prompt_fn(meta, texto)
+        return prompts.append_instrucoes(prompts.prompt_personalizado(meta, texto, learned) + cruz, "")
+    base = prompt_fn(meta, texto) + cruz
     return prompts.append_instrucoes(base, learned)
 
 

@@ -104,6 +104,36 @@
           <p id="fls-alerta" class="fls-alerta" hidden></p>
         </div>
 
+        <div class="panel" id="extrato-wrap">
+          <div class="panel-head">
+            <h3>Extrato do processo</h3>
+            <button type="button" id="btn-salvar-extrato" class="ghost">Salvar extrato</button>
+          </div>
+          <p class="micro">A advogada corrige. O cruzamento é heurístico: condenação e pagamento com as mesmas palavras nas folhas.</p>
+          <div class="extrato-grid">
+            <label>Número<input id="ex-numero" type="text" /></label>
+            <label>Autuação<input id="ex-autuacao" type="text" /></label>
+            <label>Valor da causa<input id="ex-valor" type="text" /></label>
+            <label>Reclamante<input id="ex-reclamante" type="text" /></label>
+            <label class="span2">Reclamada<input id="ex-reclamado" type="text" /></label>
+          </div>
+          <div class="table-wrap">
+            <table class="cruzamento" id="cruzamento">
+              <thead>
+                <tr>
+                  <th>Verba</th>
+                  <th>Condenado</th>
+                  <th>Pago</th>
+                  <th>Fls. sentença</th>
+                  <th>Fls. pago</th>
+                  <th>Tese</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="panel actions">
           <h3>Gerar peça</h3>
           <div class="action-groups">
