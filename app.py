@@ -6,6 +6,7 @@ import os
 import secrets
 import subprocess
 import sys
+import threading
 import time
 import traceback
 import zipfile
@@ -16,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+import contas
 import docx_out
 import extractor
 import llm
@@ -30,6 +32,7 @@ CACHE_NAME = "extrato.json"
 EXTRACT_VERSION = 5
 PRODUCT = "Harvey.ai"
 SITE_PASSWORD = (os.environ.get("SITE_PASSWORD") or "").strip()
+JOBS: dict[str, dict] = {}
 
 app = FastAPI(title=PRODUCT, version="1.0.0")
 
@@ -44,6 +47,31 @@ app.add_middleware(
 )
 
 app.mount("/ui", StaticFiles(directory=STATIC), name="static")
+
+
+@app.middleware("http")
+async def login_advogada(request: Request, call_next):
+    path = request.url.path
+    public = path in ("/api/health", "/health", "/api/entrar") or not path.startswith("/api/")
+    user = contas.user_from_request(request)
+    request.state.user = user
+    if not public and contas.tem_usuarios() and not user and request.method != "OPTIONS":
+        return Response(
+            '{"detail":"Entre com seu nome e senha."}',
+            status_code=401,
+            media_type="application/json",
+        )
+    return await call_next(request)
+
+
+def _uid(request: Request) -> str | None:
+    user = getattr(request.state, "user", None) or {}
+    return user.get("id")
+
+
+def _nome(request: Request) -> str:
+    user = getattr(request.state, "user", None) or {}
+    return user.get("nome") or "local"
 
 ACTION_MAP = {
     "resumo": ("Resumo do processo", prompts.prompt_resumo, "Resumo_Processo"),
@@ -145,6 +173,9 @@ def get_config():
         "processos_dir": str(organizer.PROCESSOS),
         "aprendizado_global": str(memory.GLOBAL_FILE),
         "web_mode": web_mode(),
+        "escritorio": cfg.get("escritorio") or "",
+        "oab": cfg.get("oab") or "",
+        "advogada": cfg.get("advogada") or "",
         "custo_estimado": (
             "Tudo gratuito no plano padrão: hosting free + Groq free. "
             "Gemini/OpenAI só se você colar chave paga."
@@ -170,6 +201,9 @@ def set_config(payload: dict):
         allowed["provider_label"] = payload.get("provider_label")
     if "base_url" in payload:
         allowed["base_url"] = (payload.get("base_url") or DEFAULT_CONFIG["base_url"]).rstrip("/")
+    for campo in ("escritorio", "oab", "advogada"):
+        if campo in payload:
+            allowed[campo] = (payload.get(campo) or "").strip()
     if "preset" in payload and payload["preset"] in PRESETS:
         p = PRESETS[payload["preset"]]
         allowed.update(
@@ -185,8 +219,38 @@ def set_config(payload: dict):
 
 
 @app.get("/api/casos")
-def casos():
-    return organizer.list_cases()
+def casos(request: Request):
+    return organizer.list_cases(_uid(request))
+
+
+@app.post("/api/entrar")
+def entrar(payload: dict):
+    try:
+        return contas.entrar(
+            payload.get("nome") or "",
+            payload.get("senha") or "",
+            criar=bool(payload.get("criar")),
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/sair")
+def sair(request: Request):
+    header = request.headers.get("authorization") or ""
+    token = header[7:].strip() if header.lower().startswith("bearer ") else ""
+    contas.sair(token)
+    return {"ok": True}
+
+
+@app.get("/api/eu")
+def eu(request: Request):
+    user = getattr(request.state, "user", None)
+    return {
+        "logado": bool(user),
+        "exige_login": contas.tem_usuarios(),
+        "nome": (user or {}).get("nome") or "",
+    }
 
 
 def _load_or_extract(case: Path, *, refresh: bool = False) -> dict:
@@ -330,7 +394,7 @@ def reabrir_peca(case_id: str = Form(...), tipo: str = Form(...)):
 
 
 @app.post("/api/importar")
-async def importar(arquivo: UploadFile = File(...)):
+async def importar(request: Request, arquivo: UploadFile = File(...)):
     """Novo processo (ou mesmo número): copia PDF → pasta nomeada → processo.pdf único."""
     organizer.ensure_dirs()
     tmp = organizer.HOME_APP / "_upload.pdf"
@@ -339,27 +403,59 @@ async def importar(arquivo: UploadFile = File(...)):
         raise HTTPException(400, "Arquivo vazio.")
     if len(raw) > 80 * 1024 * 1024:
         raise HTTPException(400, "PDF grande demais para o plano gratuito (máx. ~80 MB).")
+    if len(raw) > 25 * 1024 * 1024:
+        job = secrets.token_hex(8)
+        uid = _uid(request)
+        JOBS[job] = {"status": "lendo"}
+
+        def _fila(raw=raw, uid=uid, job=job):
+            path = organizer.HOME_APP / f"_job_{job}.pdf"
+            try:
+                path.write_bytes(raw)
+                JOBS[job] = {"status": "ok", "result": _salvar_import(path, uid)}
+            except Exception as e:
+                JOBS[job] = {"status": "erro", "detail": str(e)[:400]}
+            finally:
+                if path.exists():
+                    path.unlink()
+
+        threading.Thread(target=_fila, daemon=True).start()
+        return {"ok": True, "job": job, "fila": True, "aviso": "PDF grande entrou na fila. A leitura continua em segundo plano."}
     tmp.write_bytes(raw)
     try:
-        data = extractor.extract_process(tmp)
-        dest = organizer.copy_into_case(tmp, data["meta"])
-        extracao = data.setdefault("meta", {}).get("extracao") or {}
-        extracao["versao"] = EXTRACT_VERSION
-        data["meta"]["extracao"] = extracao
-        (dest / CACHE_NAME).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-        if not (dest / memory.PROMPTS_CASE).exists():
-            memory.save_case_prompts(dest, memory.load_case_prompts(dest))
-        return {
-            "ok": True,
-            "id": dest.name,
-            "path": str(dest),
-            "meta": data["meta"],
-            "processo_pdf": "processo.pdf",
-            "modo": "unico_processo_pdf",
-        }
+        return _salvar_import(tmp, _uid(request))
     finally:
         if tmp.exists():
             tmp.unlink()
+
+
+def _salvar_import(tmp: Path, uid: str | None) -> dict:
+    data = extractor.extract_process(tmp)
+    if uid:
+        data["meta"]["dono"] = uid
+    dest = organizer.copy_into_case(tmp, data["meta"])
+    extracao = data.setdefault("meta", {}).get("extracao") or {}
+    extracao["versao"] = EXTRACT_VERSION
+    data["meta"]["extracao"] = extracao
+    (dest / CACHE_NAME).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    if not (dest / memory.PROMPTS_CASE).exists():
+        memory.save_case_prompts(dest, memory.load_case_prompts(dest))
+    return {
+        "ok": True,
+        "id": dest.name,
+        "path": str(dest),
+        "meta": data["meta"],
+        "processo_pdf": "processo.pdf",
+        "modo": "unico_processo_pdf",
+    }
+
+
+@app.get("/api/job")
+def job(id: str):
+    item = JOBS.get(id)
+    if not item:
+        raise HTTPException(404, "Fila não encontrada.")
+    return item
 
 
 @app.post("/api/atualizar-processo")
@@ -408,7 +504,72 @@ async def atualizar_processo(case_id: str = Form(...), arquivo: UploadFile = Fil
             tmp.unlink()
 
 
-def _build_user_prompt(case: Path, tipo: str, meta: dict, texto: str, extra: str = "") -> str:
+@app.post("/api/juntar-paginas")
+async def juntar_paginas(case_id: str = Form(...), arquivo: UploadFile = File(...)):
+    """Acrescenta só as páginas novas ao processo.pdf e relê o processo."""
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    base_pdf = case / "processo.pdf"
+    if not base_pdf.exists():
+        raise HTTPException(400, "Este processo ainda não tem processo.pdf.")
+    raw = await arquivo.read()
+    if len(raw) < 100:
+        raise HTTPException(400, "Arquivo vazio.")
+    extra = organizer.HOME_APP / "_paginas.pdf"
+    merged = case / "_processo_junto.pdf"
+    extra.write_bytes(raw)
+    try:
+        import fitz
+
+        doc = fitz.open(base_pdf)
+        novo = fitz.open(extra)
+        antes = doc.page_count
+        doc.insert_pdf(novo)
+        doc.save(merged, garbage=4, deflate=True)
+        doc.close()
+        novo.close()
+        merged.replace(base_pdf)
+        data = extractor.extract_process(base_pdf)
+        old = {}
+        meta_path = case / "meta.json"
+        if meta_path.exists():
+            try:
+                old = json.loads(meta_path.read_text(encoding="utf-8"))
+            except Exception:
+                old = {}
+        meta = {**old, **(data.get("meta") or {})}
+        meta["paginas"] = (data.get("meta") or {}).get("paginas")
+        extracao = meta.setdefault("extracao", {})
+        extracao["versao"] = EXTRACT_VERSION
+        data["meta"] = meta
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        (case / CACHE_NAME).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return {
+            "ok": True,
+            "id": case.name,
+            "paginas_antes": antes,
+            "paginas": meta.get("paginas"),
+            "meta": meta,
+        }
+    finally:
+        if extra.exists():
+            extra.unlink()
+        if merged.exists():
+            merged.unlink()
+
+
+def _build_user_prompt(
+    case: Path,
+    tipo: str,
+    meta: dict,
+    texto: str,
+    extra: str = "",
+    persona: str = "",
+    area: str = "",
+    prazo: str = "",
+) -> str:
     learned = memory.combined_instructions(case, tipo, extra)
     rows = ((meta.get("extrato") or {}).get("verbas")) or meta.get("cruzamento") or []
     cruz = ""
@@ -416,6 +577,15 @@ def _build_user_prompt(case: Path, tipo: str, meta: dict, texto: str, extra: str
         cruz = "\n\n" + extractor.cruzamento_texto(rows)
         if meta.get("extrato_manual"):
             cruz += "\nExtrato corrigido pela advogada: priorize estes dados de capa e verbas.\n"
+    if persona in ("reclamada", "reclamante", "juizo"):
+        cruz += f"\nPosição da peça: {persona}.\n"
+    if area:
+        cruz += f"\nÁrea: {area}.\n"
+    if prazo:
+        cruz += (
+            f"\nPrazo informado: {prazo}. Trate como lembrete. "
+            "A tempestividade se confere no PJe. Não garanta o prazo.\n"
+        )
     _titulo, prompt_fn, _base = ACTION_MAP[tipo]
     if tipo == "personalizado":
         if not learned.strip() and not cruz:
@@ -511,11 +681,15 @@ def _guard_nova_acao(case: Path, tipo: str) -> None:
 
 @app.post("/api/acao")
 def acao(
+    request: Request,
     case_id: str = Form(...),
     tipo: str = Form(...),
     modo: str = Form("arquivos"),
     instrucoes_extra: str = Form(""),
     salvar_aprendizado: str = Form("1"),
+    persona: str = Form(""),
+    area: str = Form("trabalhista"),
+    prazo: str = Form(""),
 ):
     try:
         case = organizer.case_dir(case_id)
@@ -535,7 +709,9 @@ def acao(
     meta = data.get("meta") or {}
     texto = data.get("texto") or ""
     titulo, _, base_name = ACTION_MAP[tipo]
-    user_prompt = _build_user_prompt(case, tipo, meta, texto, "" if learn else extra)
+    user_prompt = _build_user_prompt(
+        case, tipo, meta, texto, "" if learn else extra, persona, area, prazo
+    )
     learned = memory.combined_instructions(case, tipo, "" if learn else extra)
 
     t0 = time.perf_counter()
@@ -551,6 +727,8 @@ def acao(
     files = _persist_peca(
         case, tipo, titulo, body, base_name, learned, segundos=segundos, refine=False
     )
+    memory.auditar(case, _nome(request), "gerar", titulo)
+    extra_resp = _sinais(body, meta, case)
     metrics = _metrics_block(files)
 
     if modo == "chat":
@@ -565,6 +743,7 @@ def acao(
             "prompts_usados": learned,
             "sugestao_arquivo": files["docx"],
             **metrics,
+            **extra_resp,
         }
 
     return {
@@ -578,11 +757,13 @@ def acao(
         "meta": meta,
         "prompts_usados": learned,
         **metrics,
+        **extra_resp,
     }
 
 
 @app.post("/api/refinar")
 def refinar(
+    request: Request,
     case_id: str = Form(...),
     feedback: str = Form(...),
     salvar_aprendizado: str = Form("1"),
@@ -659,6 +840,7 @@ Capa/meta: {meta}
         refine=True,
         texto_anterior=texto_anterior,
     )
+    memory.auditar(case, _nome(request), "refinar", titulo)
     return {
         "ok": True,
         "titulo": titulo,
@@ -669,6 +851,7 @@ Capa/meta: {meta}
         "pasta": str(case),
         "prompts_usados": learned,
         **_metrics_block(files),
+        **_sinais(body, meta, case),
     }
 
 
@@ -767,6 +950,141 @@ def abrir_pasta(case_id: str):
     else:
         subprocess.Popen(["xdg-open", str(case)])
     return {"ok": True}
+
+
+SUMULAS_TST = {
+    6, 7, 51, 85, 90, 126, 191, 212, 219, 228, 244, 264, 277, 294,
+    331, 338, 362, 366, 368, 369, 378, 381, 423, 426, 437, 443, 444, 449, 460,
+}
+
+
+def _sinais(texto: str, meta: dict, case: Path) -> dict:
+    import re
+
+    avisos = []
+    for m in re.finditer(r"S[úu]mula\s+(\d+)", texto or "", re.I):
+        n = int(m.group(1))
+        if n not in SUMULAS_TST:
+            avisos.append(
+                f"Súmula {n} não está na biblioteca local. Confira o enunciado no site do TST antes de protocolar."
+            )
+    indice = meta.get("indice") or []
+    tipos = " ".join(
+        (item.get("tipo") if isinstance(item, dict) else str(item)) for item in indice
+    ).upper()
+    estado = memory.estado_publico(case)
+    fechadas = {k for k, v in (estado.get("tipos") or {}).items() if v.get("fechada")}
+    sugestao = ""
+    if "SENTEN" in tipos and "recurso" not in fechadas and not estado.get("aberta"):
+        sugestao = "Há sentença no índice e o recurso ainda não está fechado. Próxima peça sugerida: Recurso Ordinário."
+    rows = ((meta.get("extrato") or {}).get("verbas")) or meta.get("cruzamento") or []
+    risco_n = sum(1 for r in rows if isinstance(r, dict) and r.get("condenado") == "sim" and r.get("pago") == "sim")
+    risco = ""
+    if risco_n:
+        risco = (
+            f"{risco_n} verba(s) com condenação e pagamento localizados no extrato. "
+            "Isso não é previsão de resultado nem valor de acordo."
+        )
+    camadas = meta.get("camadas") or {}
+    return {
+        "jurisprudencia_avisos": avisos,
+        "sugestao_proxima": sugestao,
+        "risco_acordo": risco,
+        "camadas": camadas,
+    }
+
+
+@app.get("/api/folha")
+def folha(case_id: str, pagina: int):
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    cache = case / CACHE_NAME
+    if not cache.exists():
+        return {"ok": False, "trecho": "Ainda não há extrato. Gere ou importe de novo."}
+    data = json.loads(cache.read_text(encoding="utf-8"))
+    texto = data.get("texto") or ""
+    marker = f"===== PAGINA {pagina} ====="
+    if marker not in texto:
+        return {"ok": False, "pagina": pagina, "trecho": "Esta folha não entrou no extrato lido."}
+    part = texto.split(marker, 1)[1]
+    nxt = part.find("===== PAGINA ")
+    trecho = (part[:nxt] if nxt > 0 else part)[:2200].strip()
+    return {"ok": True, "pagina": pagina, "trecho": trecho}
+
+
+@app.get("/api/camadas")
+def camadas(case_id: str):
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    cache = case / CACHE_NAME
+    if not cache.exists():
+        return {"capa": "", "sentenca": "", "provas": ""}
+    data = json.loads(cache.read_text(encoding="utf-8"))
+    meta = data.get("meta") or {}
+    layers = meta.get("camadas") or {}
+    if layers:
+        return layers
+    texto = data.get("texto") or ""
+
+    def _apos(titulo: str) -> str:
+        if titulo not in texto:
+            return ""
+        return texto.split(titulo, 1)[1][:1800]
+
+    return {
+        "capa": texto[:1400],
+        "sentenca": _apos("SENTENÇA"),
+        "provas": _apos("COMPROVANTES"),
+    }
+
+
+@app.post("/api/segredo")
+def segredo(case_id: str = Form(...), ligado: str = Form("1")):
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    meta_path = case / "meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+    meta["segredo"] = ligado not in ("0", "false", "False")
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"ok": True, "segredo": meta["segredo"]}
+
+
+@app.post("/api/excluir")
+def excluir(request: Request, case_id: str = Form(...)):
+    """Apaga a pasta do processo neste servidor (LGPD: exclusão a pedido)."""
+    import shutil
+
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    memory.auditar(case, _nome(request), "excluir", case.name)
+    shutil.rmtree(case)
+    return {"ok": True}
+
+
+@app.get("/api/auditoria")
+def auditoria(case_id: str):
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    path = case / "auditoria.jsonl"
+    if not path.exists():
+        return {"linhas": []}
+    linhas = []
+    for line in path.read_text(encoding="utf-8").splitlines()[-40:]:
+        try:
+            linhas.append(json.loads(line))
+        except Exception:
+            continue
+    return {"linhas": linhas}
 
 
 if __name__ == "__main__":

@@ -249,3 +249,57 @@ def save_peca(text: str, case_dir: Path, base_name: str, title: str | None = Non
     markdown_to_docx(text, docx_path, title=title)
     markdown_to_pdf(text, pdf_path, title=title)
     return {"docx": docx_path.name, "pdf": pdf_path.name, "base": base}
+
+
+def nome_pdf_pje(numero: str, base: str) -> str:
+    """Nome estável, só letras/números, aceito no protocolo do PJe."""
+    digits = re.sub(r"\D", "", numero or "") or "processo"
+    safe = re.sub(r"[^A-Za-z0-9_]", "", base or "Peca")[:48] or "Peca"
+    return f"{digits}_{safe}.pdf"[:120]
+
+
+def publicar_pdf_pje(case_dir: Path, info: dict, numero: str) -> str:
+    """Um PDF por ação. Sobrepõe o arquivo de protocolo e remove o rascunho."""
+    src_name = info.get("pdf") or ""
+    src = case_dir / src_name
+    if not src.is_file():
+        base = info.get("base") or "Peca"
+        alt = case_dir / f"{base}.pdf"
+        if alt.is_file():
+            src = alt
+        else:
+            raise FileNotFoundError("PDF da peça não encontrado para protocolar.")
+    dest_name = nome_pdf_pje(numero, info.get("base") or src.stem)
+    dest = case_dir / dest_name
+    old = info.get("pje_pdf")
+    if old and old != dest_name:
+        old_path = case_dir / old
+        if old_path.is_file() and old_path.resolve() != dest.resolve():
+            old_path.unlink()
+    if src.resolve() != dest.resolve():
+        dest.write_bytes(src.read_bytes())
+        src.unlink()
+    doc = fitz.open(dest)
+    meta = doc.metadata or {}
+    meta["title"] = info.get("titulo") or dest.stem
+    meta["subject"] = numero or ""
+    try:
+        from organizer import load_config
+
+        cfg = load_config()
+    except Exception:
+        cfg = {}
+    advogada = (cfg.get("advogada") or "").strip()
+    oab = (cfg.get("oab") or "").strip()
+    escritorio = (cfg.get("escritorio") or "").strip()
+    meta["author"] = advogada or "Harvey.ai"
+    meta["creator"] = " ".join(p for p in (advogada, oab, escritorio, "Harvey.ai") if p)
+    meta["producer"] = "Harvey.ai"
+    meta["keywords"] = f"OAB {oab}" if oab else "Harvey.ai"
+    doc.set_metadata(meta)
+    doc.saveIncr()
+    doc.close()
+    info["pdf"] = dest_name
+    info["pje_pdf"] = dest_name
+    return dest_name
+

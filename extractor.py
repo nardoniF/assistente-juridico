@@ -379,6 +379,11 @@ def extract_process(pdf_path: Path, max_chars: int = 550_000) -> dict:
             "autuacao": meta.get("autuacao") or "",
             "verbas": cruzamento,
         }
+        meta["camadas"] = {
+            "capa": (pages[0] if pages else "")[:1600],
+            "sentenca": "\n".join(pages[i][:500] for i in sent_idx[:6])[:2000],
+            "provas": "\n".join(pages[i][:400] for i in pay_idx[:8])[:2000],
+        }
         meta["extracao"] = {
             "paginas_selecionadas": len(wanted),
             "paginas_comprovante": len(pay_idx),

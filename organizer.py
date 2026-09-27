@@ -187,7 +187,7 @@ def _estado_publico(case_dir: Path) -> dict:
     return memory.estado_publico(case_dir)
 
 
-def list_cases() -> list[dict]:
+def list_cases(user_id: str | None = None) -> list[dict]:
     ensure_dirs()
     out = []
     for d in sorted(PROCESSOS.iterdir(), reverse=True):
@@ -214,6 +214,15 @@ def list_cases() -> list[dict]:
                 prompts_n = len(pdata.get("geral") or [])
             except Exception:
                 prompts_n = 0
+        dono = meta.get("dono") or ""
+        segredo = bool(meta.get("segredo"))
+        if user_id:
+            if dono and dono != user_id:
+                continue
+            if segredo and dono != user_id:
+                continue
+        elif segredo:
+            continue
         out.append(
             {
                 "id": d.name,

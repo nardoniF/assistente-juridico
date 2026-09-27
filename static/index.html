@@ -17,7 +17,16 @@
       <div class="brand">
         <p class="brand-mark">3n20 · produto</p>
         <h1>Harvey.ai</h1>
-        <p class="brand-sub">Processos em PDF → peças em Word e PDF</p>
+        <p class="brand-sub" id="brand-sub">Processos em PDF → peças em Word e PDF</p>
+      </div>
+      <div class="rail-tools">
+        <button type="button" id="btn-tema" class="ghost">Modo claro</button>
+        <select id="idioma" aria-label="Idioma">
+          <option value="pt">PT</option>
+          <option value="en">EN</option>
+          <option value="es">ES</option>
+        </select>
+        <button type="button" id="btn-conta" class="ghost">Entrar</button>
       </div>
 
       <label class="dropzone" id="dropzone" for="pdf">
@@ -52,7 +61,14 @@
             Atualizar processo
             <input id="pdf-update" type="file" accept="application/pdf,.pdf" hidden />
           </label>
-          <button type="button" id="btn-pasta" class="ghost">Baixar pasta (ZIP)</button>
+          <label class="ghost file-inline" for="pdf-juntar">
+            Juntar páginas novas
+            <input id="pdf-juntar" type="file" accept="application/pdf,.pdf" hidden />
+          </label>
+          <button type="button" id="btn-whatsapp" class="ghost">WhatsApp</button>
+          <button type="button" id="btn-segredo" class="ghost">Segredo</button>
+          <button type="button" id="btn-excluir" class="ghost">Excluir processo</button>
+          <button type="button" id="btn-pasta" class="ghost">Backup (ZIP)</button>
           <button type="button" id="btn-ver-prompts" class="ghost">Prompts</button>
         </div>
       </header>
@@ -77,6 +93,26 @@
               <span>Guardar aprendizado</span>
             </label>
           </div>
+          <div class="contexto-row">
+            <label>Posição
+              <select id="persona">
+                <option value="reclamada">Reclamada</option>
+                <option value="reclamante">Reclamante</option>
+                <option value="juizo">Juízo</option>
+              </select>
+            </label>
+            <label>Área
+              <select id="area">
+                <option value="trabalhista">Trabalhista</option>
+                <option value="civel">Cível</option>
+                <option value="previdenciario">Previdenciário</option>
+                <option value="familia">Família</option>
+              </select>
+            </label>
+            <label>Prazo (confira no PJe)
+              <input id="prazo" type="text" placeholder="ex.: 8 dias úteis" />
+            </label>
+          </div>
           <div class="chips" id="prompt-chips">
             <button type="button" data-prompt="Cruze férias, 13º, aviso e FGTS com o TRCT e comprovantes. Cite as folhas. Peça dedução ou compensação do que já foi pago.">Cruzar TRCT</button>
             <button type="button" data-prompt="Impugne o laudo: aponte o que não consta dos autos, o que contradiz holerites/ponto e o que deve ser desconsiderado.">Impugnar laudo</button>
@@ -93,8 +129,21 @@
             <button type="button" id="btn-fechar" class="ghost">Peça fechada</button>
             <p class="hint" id="peca-estado">Sem peça aberta. A primeira ação cria o arquivo.</p>
           </div>
+          <div id="pje-box" class="chips"></div>
           <div id="reabrir-box" class="chips"></div>
           <div id="prompts-box" class="prompts-box" hidden></div>
+        </div>
+
+        <div class="panel indice-panel" id="camadas-wrap">
+          <div class="panel-head">
+            <h3>Resumo em camadas</h3>
+            <div class="chips" id="camadas-tabs">
+              <button type="button" data-camada="capa">Capa</button>
+              <button type="button" data-camada="sentenca">Sentença</button>
+              <button type="button" data-camada="provas">Provas</button>
+            </div>
+          </div>
+          <pre id="camadas-texto" class="camadas-texto"></pre>
         </div>
 
         <div class="panel indice-panel" id="indice-wrap">
@@ -177,6 +226,9 @@
               <p class="group-label">Prévia</p>
               <h3 id="chat-titulo">Resultado</h3>
               <p id="metrics-line" class="micro"></p>
+              <p id="sugestao-proxima" class="micro"></p>
+              <p id="risco-acordo" class="micro"></p>
+              <p id="juris-avisos" class="fls-alerta" hidden></p>
             </div>
             <button type="button" id="btn-salvar" class="ghost">Regravar Word + PDF</button>
           </div>
@@ -208,6 +260,7 @@
         </div>
       </section>
     </main>
+    <p class="disclaimer" id="disclaimer">Harvey.ai é assistente de redação. Não é advogado, não protocola e não garante prazo, jurisprudência nem resultado.</p>
   </div>
 
   <div id="toast" class="toast" hidden></div>
@@ -235,7 +288,16 @@
       <label>Chave da API
         <input id="api-key" type="password" autocomplete="off" placeholder="AIza... / sk-... / gsk_..." />
       </label>
-      <p class="muted micro">Groq: <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> · Gemini: Google AI Studio · OpenAI: platform.openai.com</p>
+      <label>Escritório
+        <input id="escritorio" type="text" placeholder="Nome do escritório" />
+      </label>
+      <label>Advogada
+        <input id="advogada" type="text" placeholder="Nome na capa do PDF" />
+      </label>
+      <label>OAB
+        <input id="oab" type="text" placeholder="OAB/SP 000000" />
+      </label>
+      <p class="muted micro">Plano atual: gratuito (Groq + Render free, que dorme). Domínio próprio, servidor sempre ligado, WhatsApp oficial e app de loja dependem de conta paga.</p>
       <label>Modelo (avançado)
         <input id="api-model" type="text" />
       </label>
@@ -245,6 +307,45 @@
         <button value="cancel" class="ghost">Fechar</button>
         <button id="salvar-ajustes" value="default" class="accent">Salvar</button>
       </menu>
+    </form>
+  </dialog>
+
+  <dialog id="login">
+    <form id="form-login">
+      <h2>Entrar</h2>
+      <p class="muted">A primeira conta vira a advogada deste Harvey. Cada uma vê os processos dela.</p>
+      <label>Nome<input id="login-nome" type="text" autocomplete="username" required /></label>
+      <label>Senha<input id="login-senha" type="password" autocomplete="current-password" minlength="4" required /></label>
+      <label class="switch"><input type="checkbox" id="login-criar" /> <span>Criar esta conta</span></label>
+      <menu>
+        <button type="button" id="login-fechar" class="ghost" value="cancel">Agora não</button>
+        <button type="submit" class="accent">Entrar</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="onboarding">
+    <form id="form-onb">
+      <p class="eyebrow" id="onb-kicker">1 de 3</p>
+      <h2 id="onb-title">Quem vai usar</h2>
+      <div id="onb-1">
+        <label>Nome<input id="onb-nome" type="text" /></label>
+        <label>Senha<input id="onb-senha" type="password" minlength="4" /></label>
+      </div>
+      <p id="onb-2" hidden>Anexe o PDF completo do processo. O Harvey cria uma pasta e grava um único processo.pdf.</p>
+      <p id="onb-3" hidden>Escolha a peça (contestação, recurso…). Enquanto estiver aberta, use Refinar. Feche quando for protocolar.</p>
+      <menu>
+        <button type="button" id="onb-pular" class="ghost">Pular</button>
+        <button type="button" id="onb-next" class="accent">Continuar</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="folha">
+    <form method="dialog">
+      <h2 id="folha-titulo">Folha</h2>
+      <pre id="folha-trecho" class="camadas-texto"></pre>
+      <menu><button value="cancel" class="ghost">Fechar</button></menu>
     </form>
   </dialog>
 

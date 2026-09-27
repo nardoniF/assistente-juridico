@@ -67,6 +67,18 @@ function apiUrl(path) {
   return base + path;
 }
 
+const _fetch = window.fetch.bind(window);
+window.fetch = (url, opts) => {
+  opts = opts ? { ...opts } : {};
+  const token = localStorage.getItem("harvey_token");
+  if (token && String(url).includes("/api/")) {
+    const headers = new Headers(opts.headers || {});
+    if (!headers.has("Authorization")) headers.set("Authorization", "Bearer " + token);
+    opts.headers = headers;
+  }
+  return _fetch(url, opts);
+};
+
 function toast(msg, ms = 4200) {
   toastEl.hidden = false;
   toastEl.textContent = msg;
@@ -135,6 +147,9 @@ async function refreshConfig() {
     ? "Harvey · IA pronta · " + (configCache.provider_label || configCache.provider || "")
     : "Configure a IA em Ajustes (Gemini Pro recomendado)";
   document.getElementById("custo-info").textContent = configCache.custo_estimado || "";
+  document.getElementById("escritorio").value = configCache.escritorio || "";
+  document.getElementById("advogada").value = configCache.advogada || "";
+  document.getElementById("oab").value = configCache.oab || "";
   document.getElementById("api-key").placeholder = configCache.has_key
     ? configCache.masked_key
     : "AIza... / sk-... / gsk_...";
@@ -214,8 +229,9 @@ function renderIndice(meta) {
     if (seen.has(key)) continue;
     seen.add(key);
     const span = document.createElement("span");
-    span.className = "indice-item";
+    span.className = "indice-item fl";
     span.innerHTML = `${item.tipo} <em>fl. ${item.page}</em>${item.ocr ? " · OCR" : ""}`;
+    span.onclick = () => abrirFolha(item.page);
     box.appendChild(span);
   }
   for (const p of pays.slice(0, 12)) {
@@ -223,8 +239,9 @@ function renderIndice(meta) {
     if (seen.has(key)) continue;
     seen.add(key);
     const span = document.createElement("span");
-    span.className = "indice-item";
+    span.className = "indice-item fl";
     span.innerHTML = `Comprovante <em>fl. ${p.page}</em>`;
+    span.onclick = () => abrirFolha(p.page);
     box.appendChild(span);
   }
   if (!box.children.length) {
@@ -267,6 +284,7 @@ function selectCase(c) {
   casoAtual.textContent = `${(m.reclamante || "—").slice(0, 60)} × ${(m.reclamado || "—").slice(0, 60)} · ${c.path}`;
   renderIndice(m);
   renderExtrato(m);
+  carregarCamadas();
   applyLock(c.estado_pecas);
   renderLista(c.id);
 }
@@ -274,6 +292,7 @@ function selectCase(c) {
 function applyLock(estado) {
   const box = document.getElementById("peca-estado");
   const reabrir = document.getElementById("reabrir-box");
+  const pjeBox = document.getElementById("pje-box");
   const aberta = estado && estado.aberta;
   const tipos = (estado && estado.tipos) || {};
   const atual = aberta ? tipos[aberta] : null;
@@ -281,7 +300,7 @@ function applyLock(estado) {
     if (atual) {
       box.textContent = `Aberta: ${atual.titulo}. Refine o mesmo arquivo ou marque Peça fechada.`;
     } else {
-      box.textContent = "Nenhuma peça aberta. Pode começar outra ação.";
+      box.textContent = "Nenhuma peça aberta. O PDF de protocolo nasce ao marcar Peça fechada.";
     }
   }
   document.querySelectorAll("#acoes-wrap button[data-tipo]").forEach((btn) => {
@@ -301,6 +320,24 @@ function applyLock(estado) {
     b.textContent = "Reabrir " + (info.titulo || info.tipo);
     b.onclick = () => reabrirPeca(info.tipo);
     reabrir.appendChild(b);
+  });
+  if (!pjeBox) return;
+  pjeBox.innerHTML = "";
+  Object.values(tipos).forEach((info) => {
+    if (!info.fechada || !info.pje_pdf) return;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "accent";
+    b.textContent = "PJe · " + info.pje_pdf;
+    b.onclick = () => {
+      window.location.href = apiUrl(
+        "/api/download?case_id=" +
+          encodeURIComponent(selected.id) +
+          "&arquivo=" +
+          encodeURIComponent(info.pje_pdf)
+      );
+    };
+    pjeBox.appendChild(b);
   });
 }
 
@@ -323,7 +360,10 @@ async function fecharPeca() {
     const data = await r.json();
     if (!r.ok) throw new Error(data.detail || "falha");
     await syncSelected();
-    toast("Peça fechada. Pode começar outra ação.");
+    const nome = Object.values((data.estado_pecas && data.estado_pecas.tipos) || {}).find(
+      (info) => info.fechada && info.pje_pdf
+    );
+    toast(nome && nome.pje_pdf ? "PDF para o PJe: " + nome.pje_pdf : "Peça fechada.");
   } catch (e) {
     toast(e.message);
   } finally {
@@ -511,18 +551,68 @@ function showMetrics(data) {
 function showResult(data, tituloExtra, { antes } = {}) {
   chatWrap.hidden = false;
   chatTitulo.textContent = (data.titulo || "Resultado") + (tituloExtra || "");
-  chat.textContent = data.texto || "";
+  renderPeca(data.texto || "");
   const dx = data.arquivo_docx || data.arquivos?.docx;
   const pf = data.arquivo_pdf || data.arquivos?.pdf;
   arquivosGerados.textContent =
     dx || pf ? `Arquivos: ${dx || "—"} + ${pf || "—"}` : "";
   showMetrics(data);
+  const sug = document.getElementById("sugestao-proxima");
+  const risco = document.getElementById("risco-acordo");
+  const juris = document.getElementById("juris-avisos");
+  if (sug) sug.textContent = data.sugestao_proxima || "";
+  if (risco) risco.textContent = data.risco_acordo || "";
+  if (juris) {
+    const avisos = data.jurisprudencia_avisos || [];
+    juris.hidden = !avisos.length;
+    juris.textContent = avisos.join(" ");
+  }
   renderChecklist(data.texto || "");
   warnFolhas(data.texto || "", selected && selected.meta);
   const prev = antes || data.texto_anterior;
   if (prev) showDiff(prev, data.texto || "");
   else diffWrap.hidden = true;
   chat.scrollTop = 0;
+}
+
+function renderPeca(texto) {
+  const lines = String(texto || "").split("\n");
+  chat.innerHTML = lines
+    .map((line) => {
+      const t = line.trim();
+      if (!t) return "<div class='gap'></div>";
+      let html = escapeHtml(line).replace(
+        /\b(fls?\.?\s*)(\d{1,5})\b/gi,
+        (m, pre, n) => `<button type="button" class="fl" data-fl="${n}">${pre}${n}</button>`
+      );
+      if (/^#{1,3}\s/.test(t) || /^CHECKLIST/i.test(t)) {
+        return `<h4>${html.replace(/^#+\s*/, "")}</h4>`;
+      }
+      return `<p>${html}</p>`;
+    })
+    .join("");
+  chat.querySelectorAll("button.fl").forEach((b) => {
+    b.onclick = () => abrirFolha(b.dataset.fl);
+  });
+}
+
+async function abrirFolha(pagina) {
+  if (!selected || !pagina) return;
+  const dlg = document.getElementById("folha");
+  const titulo = document.getElementById("folha-titulo");
+  const trecho = document.getElementById("folha-trecho");
+  titulo.textContent = "Folha " + pagina;
+  trecho.textContent = "Abrindo o trecho…";
+  dlg.showModal();
+  try {
+    const r = await fetch(
+      apiUrl("/api/folha?case_id=" + encodeURIComponent(selected.id) + "&pagina=" + pagina)
+    );
+    const data = await r.json();
+    trecho.textContent = data.trecho || "Esta folha não entrou no extrato lido.";
+  } catch (e) {
+    trecho.textContent = e.message;
+  }
 }
 
 async function importFile(file) {
@@ -533,8 +623,21 @@ async function importFile(file) {
   fd.append("arquivo", file);
   try {
     const r = await fetch(apiUrl("/api/importar"), { method: "POST", body: fd });
-    const data = await r.json();
+    let data = await r.json();
     if (!r.ok && !data.ok) throw new Error(data.detail || "falha");
+    if (data.job) {
+      setBusy(true, "PDF grande na fila…", "importar");
+      for (let i = 0; i < 80; i++) {
+        await new Promise((res) => setTimeout(res, 3000));
+        const j = await (await fetch(apiUrl("/api/job?id=" + data.job))).json();
+        if (j.status === "ok") {
+          data = j.result;
+          break;
+        }
+        if (j.status === "erro") throw new Error(j.detail || "fila");
+        if (i === 79) throw new Error("A fila ainda está lendo. Atualize a página daqui a pouco.");
+      }
+    }
     setStatus(importStatus, "Pasta criada.", "ok");
     selected = { id: data.id, path: data.path, meta: data.meta };
     selectCase(selected);
@@ -629,6 +732,9 @@ document.querySelectorAll("#acoes-wrap button[data-tipo]").forEach((btn) => {
     fd.append("modo", modo);
     fd.append("salvar_aprendizado", learnFlag());
     if (instrucoes) fd.append("instrucoes_extra", instrucoes);
+    fd.append("persona", document.getElementById("persona").value);
+    fd.append("area", document.getElementById("area").value);
+    fd.append("prazo", document.getElementById("prazo").value.trim());
     try {
       const r = await fetch(apiUrl("/api/acao"), { method: "POST", body: fd });
       const data = await r.json();
@@ -708,9 +814,26 @@ document.getElementById("btn-ver-prompts").onclick = async () => {
           u.segundos != null ? u.segundos + "s" : ""
         }`
       : "";
+  const hist = (data.caso?.historico || [])
+    .slice(-12)
+    .reverse()
+    .map((x) => `${x.quando || ""} · ${x.tipo || ""}\n${x.texto || ""}`)
+    .join("\n\n") || "(nenhum pedido ainda)";
+  const aud = await (
+    await fetch(apiUrl("/api/auditoria?case_id=" + encodeURIComponent(selected.id)))
+  ).json();
+  const auditTxt = (aud.linhas || [])
+    .slice(-12)
+    .reverse()
+    .map((x) => `${x.quando || ""} · ${x.usuario || ""} · ${x.acao || ""} ${x.detalhe || ""}`)
+    .join("\n") || "(ainda sem registro)";
   promptsBox.hidden = false;
   promptsBox.textContent =
-    "PROMPTS DESTE PROCESSO\n" +
+    "O QUE MUDOU\n" +
+    hist +
+    "\n\nAUDITORIA\n" +
+    auditTxt +
+    "\n\nPROMPTS DESTE PROCESSO\n" +
     geral +
     "\n\nAPRENDIZADO GLOBAL (por tipo de ação)\n" +
     glob +
@@ -789,6 +912,9 @@ document.getElementById("salvar-ajustes").onclick = async (ev) => {
   const body = {
     preset: document.getElementById("preset").value,
     model: document.getElementById("api-model").value,
+    escritorio: document.getElementById("escritorio").value.trim(),
+    advogada: document.getElementById("advogada").value.trim(),
+    oab: document.getElementById("oab").value.trim(),
   };
   if (key && !key.startsWith("•")) body.api_key = key;
   await fetch(apiUrl("/api/config"), {
@@ -803,3 +929,194 @@ document.getElementById("salvar-ajustes").onclick = async (ev) => {
 
 refreshConfig();
 refreshCasos();
+
+let camadaAtual = { capa: "", sentenca: "", provas: "" };
+
+async function carregarCamadas() {
+  const box = document.getElementById("camadas-texto");
+  if (!selected || !box) return;
+  const data = await (
+    await fetch(apiUrl("/api/camadas?case_id=" + encodeURIComponent(selected.id)))
+  ).json();
+  camadaAtual = data || {};
+  box.textContent = camadaAtual.capa || "Sem capa no extrato.";
+}
+
+document.querySelectorAll("#camadas-tabs button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const key = btn.dataset.camada;
+    document.getElementById("camadas-texto").textContent =
+      camadaAtual[key] || "Esta camada ainda não está no extrato. Atualize o PDF.";
+  });
+});
+
+document.getElementById("pdf-juntar").addEventListener("change", async (ev) => {
+  const file = ev.target.files && ev.target.files[0];
+  ev.target.value = "";
+  if (!file || !selected) return;
+  setBusy(true, "Juntando páginas novas…", "atualizar");
+  const fd = new FormData();
+  fd.append("case_id", selected.id);
+  fd.append("arquivo", file);
+  try {
+    const r = await fetch(apiUrl("/api/juntar-paginas"), { method: "POST", body: fd });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || "falha");
+    selected.meta = data.meta;
+    selectCase(selected);
+    await refreshCasos(selected.id);
+    toast(`Páginas juntadas: ${data.paginas_antes} → ${data.paginas}.`);
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    setBusy(false);
+  }
+});
+
+document.getElementById("btn-whatsapp").onclick = () => {
+  const titulo = casoTitulo.textContent || "Processo";
+  const trecho = (lastResult && lastResult.texto ? lastResult.texto : "").slice(0, 700);
+  const msg = `Harvey.ai · ${titulo}\n${trecho}`;
+  window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank", "noopener");
+};
+
+document.getElementById("btn-segredo").onclick = async () => {
+  if (!selected) return;
+  const ligado = !(selected.meta && selected.meta.segredo);
+  const fd = new FormData();
+  fd.append("case_id", selected.id);
+  fd.append("ligado", ligado ? "1" : "0");
+  const r = await fetch(apiUrl("/api/segredo"), { method: "POST", body: fd });
+  const data = await r.json();
+  if (!r.ok) return toast(data.detail || "falha");
+  selected.meta = { ...(selected.meta || {}), segredo: data.segredo };
+  toast(data.segredo ? "Segredo de justiça: só a dona vê este processo." : "Segredo desligado.");
+  refreshCasos(selected.id);
+};
+
+document.getElementById("btn-excluir").onclick = async () => {
+  if (!selected) return;
+  if (!confirm("Excluir este processo deste servidor? A pasta some daqui.")) return;
+  const fd = new FormData();
+  fd.append("case_id", selected.id);
+  const r = await fetch(apiUrl("/api/excluir"), { method: "POST", body: fd });
+  const data = await r.json();
+  if (!r.ok) return toast(data.detail || "falha");
+  selected = null;
+  acoesWrap.hidden = true;
+  emptyState.hidden = false;
+  stageActions.hidden = true;
+  toast("Processo excluído.");
+  refreshCasos();
+};
+
+document.getElementById("btn-tema").onclick = () => {
+  const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem("harvey_theme", next);
+  document.getElementById("btn-tema").textContent = next === "light" ? "Modo escuro" : "Modo claro";
+};
+
+const I18N = {
+  pt: {
+    sub: "Processos em PDF → peças em Word e PDF",
+    disc: "Harvey.ai é assistente de redação. Não é advogado, não protocola e não garante prazo, jurisprudência nem resultado.",
+  },
+  en: {
+    sub: "Case PDF → Word and PDF drafts",
+    disc: "Harvey.ai drafts text. It is not a lawyer, does not file, and does not guarantee deadlines, case law, or outcome.",
+  },
+  es: {
+    sub: "PDF del proceso → borradores en Word y PDF",
+    disc: "Harvey.ai redacta. No es abogado, no protocoliza y no garantiza plazo, jurisprudencia ni resultado.",
+  },
+};
+
+document.getElementById("idioma").onchange = (ev) => {
+  const lang = ev.target.value;
+  localStorage.setItem("harvey_lang", lang);
+  const pack = I18N[lang] || I18N.pt;
+  document.getElementById("brand-sub").textContent = pack.sub;
+  document.getElementById("disclaimer").textContent = pack.disc;
+  document.documentElement.lang = lang === "pt" ? "pt-BR" : lang;
+};
+
+document.getElementById("btn-conta").onclick = () => document.getElementById("login").showModal();
+document.getElementById("login-fechar").onclick = () => document.getElementById("login").close();
+document.getElementById("form-login").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const r = await fetch(apiUrl("/api/entrar"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      nome: document.getElementById("login-nome").value.trim(),
+      senha: document.getElementById("login-senha").value,
+      criar: document.getElementById("login-criar").checked,
+    }),
+  });
+  const data = await r.json();
+  if (!r.ok) return toast(data.detail || "Não entrou.");
+  localStorage.setItem("harvey_token", data.token);
+  document.getElementById("btn-conta").textContent = data.nome;
+  document.getElementById("login").close();
+  toast("Entrou como " + data.nome);
+  refreshCasos();
+};
+
+let onbStep = 1;
+function pintarOnb() {
+  document.getElementById("onb-kicker").textContent = onbStep + " de 3";
+  document.getElementById("onb-1").hidden = onbStep !== 1;
+  document.getElementById("onb-2").hidden = onbStep !== 2;
+  document.getElementById("onb-3").hidden = onbStep !== 3;
+  document.getElementById("onb-title").textContent =
+    onbStep === 1 ? "Quem vai usar" : onbStep === 2 ? "Anexar o processo" : "Gerar a peça";
+  document.getElementById("onb-next").textContent = onbStep === 3 ? "Começar" : "Continuar";
+}
+document.getElementById("onb-next").onclick = async () => {
+  if (onbStep === 1) {
+    const nome = document.getElementById("onb-nome").value.trim();
+    const senha = document.getElementById("onb-senha").value;
+    if (nome && senha.length >= 4) {
+      const r = await fetch(apiUrl("/api/entrar"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nome, senha, criar: true }),
+      });
+      const data = await r.json();
+      if (!r.ok) return toast(data.detail || "Não criei a conta.");
+      localStorage.setItem("harvey_token", data.token);
+      document.getElementById("btn-conta").textContent = data.nome;
+    }
+  }
+  if (onbStep === 2) document.getElementById("pdf").click();
+  if (onbStep >= 3) {
+    localStorage.setItem("harvey_onboard", "1");
+    document.getElementById("onboarding").close();
+    return;
+  }
+  onbStep += 1;
+  pintarOnb();
+};
+document.getElementById("onb-pular").onclick = () => {
+  localStorage.setItem("harvey_onboard", "1");
+  document.getElementById("onboarding").close();
+};
+
+const tema = localStorage.getItem("harvey_theme") || "dark";
+document.documentElement.dataset.theme = tema;
+document.getElementById("btn-tema").textContent = tema === "light" ? "Modo escuro" : "Modo claro";
+const lang = localStorage.getItem("harvey_lang") || "pt";
+document.getElementById("idioma").value = lang;
+document.getElementById("idioma").dispatchEvent(new Event("change"));
+if (!localStorage.getItem("harvey_onboard")) {
+  pintarOnb();
+  document.getElementById("onboarding").showModal();
+}
+fetch(apiUrl("/api/eu"))
+  .then((r) => r.json())
+  .then((eu) => {
+    if (eu.nome) document.getElementById("btn-conta").textContent = eu.nome;
+  })
+  .catch(() => {});
+

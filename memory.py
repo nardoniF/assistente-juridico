@@ -178,6 +178,7 @@ def estado_publico(case: Path) -> dict:
             "titulo": info.get("titulo") or tipo,
             "docx": info.get("docx"),
             "pdf": info.get("pdf"),
+            "pje_pdf": info.get("pje_pdf") or "",
             "fechada": bool(info.get("fechada")),
             "refines": info.get("refines") or 0,
         }
@@ -185,11 +186,25 @@ def estado_publico(case: Path) -> dict:
 
 
 def fechar_peca(case: Path) -> dict:
+    import docx_out
+
     estado = load_estado(case)
     tipo = estado.get("aberta")
     if not tipo or tipo not in estado["tipos"]:
         raise ValueError("Não há peça aberta para fechar.")
-    estado["tipos"][tipo]["fechada"] = True
+    info = estado["tipos"][tipo]
+    numero = ""
+    meta_path = case / "meta.json"
+    if meta_path.exists():
+        try:
+            numero = (json.loads(meta_path.read_text(encoding="utf-8")).get("numero") or "").strip()
+        except Exception:
+            numero = ""
+    try:
+        docx_out.publicar_pdf_pje(case, info, numero)
+    except FileNotFoundError as e:
+        raise ValueError(str(e)) from e
+    info["fechada"] = True
     estado["aberta"] = None
     save_estado(case, estado)
     return estado_publico(case)
@@ -222,3 +237,17 @@ def reabrir_peca(case: Path, tipo: str) -> dict:
         },
     )
     return estado_publico(case)
+
+
+def auditar(case: Path, usuario: str, acao: str, detalhe: str = "") -> None:
+    line = json.dumps(
+        {
+            "quando": _now(),
+            "usuario": usuario or "local",
+            "acao": acao,
+            "detalhe": (detalhe or "")[:300],
+        },
+        ensure_ascii=False,
+    )
+    with (case / "auditoria.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
