@@ -222,6 +222,9 @@ function renderIndice(meta) {
   if (pays.length) bits.push(pays.length + " com comprovante");
   if (ocr.length) bits.push(ocr.length + " via OCR");
   else if (extra.ocr_disponivel === false) bits.push("OCR indisponível neste PC");
+  if (extra.ocr_puladas && extra.ocr_disponivel !== false) {
+    bits.push(extra.ocr_puladas + " páginas-imagem ainda sem OCR");
+  }
   info.textContent = bits.join(" · ") || "Atualize o processo para montar o índice.";
   const seen = new Set();
   for (const item of indice) {
@@ -576,7 +579,7 @@ function showResult(data, tituloExtra, { antes } = {}) {
   chat.scrollTop = 0;
 }
 
-function renderJuris(conferidas, avisos) {
+function renderJuris(conferidas, avisos, acordaos, ausentes) {
   const box = document.getElementById("juris-lista");
   const alerta = document.getElementById("juris-avisos");
   if (alerta) {
@@ -596,23 +599,53 @@ function renderJuris(conferidas, avisos) {
       `<p class="micro"><a href="${item.fonte}" target="_blank" rel="noopener">Livro de Súmulas do TST</a></p>`;
     box.appendChild(card);
   });
+  (acordaos || []).forEach((item) => {
+    const card = document.createElement("article");
+    card.className = "juris-card";
+    const mais = item.total > 1 ? ` · ${item.total} decisões deste número no TST` : "";
+    card.innerHTML =
+      `<p class="micro">Ementa lida na pesquisa do TST${mais}</p>` +
+      `<h4>${escapeHtml(item.rotulo || item.numero)}</h4>` +
+      `<p class="micro">${escapeHtml(item.turma || "")}${item.relator ? " · " + escapeHtml(item.relator) : ""}${item.julgamento ? " · julgamento " + escapeHtml(item.julgamento) : ""}</p>` +
+      `<p>${escapeHtml(item.ementa || "")}</p>` +
+      `<p class="micro"><a href="${item.fonte}" target="_blank" rel="noopener">Abrir na pesquisa do TST</a></p>`;
+    box.appendChild(card);
+  });
+  (ausentes || []).forEach((item) => {
+    const card = document.createElement("article");
+    card.className = "juris-card ausente";
+    card.innerHTML =
+      `<p class="micro">Sem ementa lida</p>` +
+      `<h4>${escapeHtml(item.numero)}</h4>` +
+      `<p>${escapeHtml(item.motivo || "")}</p>` +
+      `<p class="micro"><a href="${item.fonte}" target="_blank" rel="noopener">Abrir a busca deste número no TST</a></p>`;
+    box.appendChild(card);
+  });
 }
 
 document.getElementById("btn-conferir-sumulas").onclick = async () => {
   const texto = (lastResult && lastResult.texto) || document.getElementById("instrucoes-extra").value;
   if (!texto.trim()) {
-    toast("Gere a peça ou cole no diálogo a súmula que quer conferir.");
+    toast("Gere a peça ou cole no diálogo a súmula ou o número do acórdão.");
     return;
   }
   chatWrap.hidden = false;
+  setBusy(true, "Lendo a pesquisa do TST…");
   const fd = new FormData();
   fd.append("texto", texto);
-  const r = await fetch(apiUrl("/api/conferir-sumulas"), { method: "POST", body: fd });
-  const data = await r.json();
-  if (!r.ok) return toast(data.detail || "falha");
-  renderJuris(data.conferidas || [], data.avisos || []);
-  if (!(data.conferidas || []).length && !(data.avisos || []).length) {
-    toast("Nenhuma súmula citada nesse texto.");
+  try {
+    const r = await fetch(apiUrl("/api/conferir-sumulas"), { method: "POST", body: fd });
+    const data = await r.json();
+    if (!r.ok) return toast(data.detail || "falha");
+    renderJuris(data.conferidas || [], data.avisos || [], data.acordaos || [], data.acordaos_ausentes || []);
+    const tem =
+      (data.conferidas || []).length ||
+      (data.acordaos || []).length ||
+      (data.acordaos_ausentes || []).length ||
+      (data.avisos || []).length;
+    if (!tem) toast("Nenhuma súmula nem número de acórdão nesse texto.");
+  } finally {
+    setBusy(false);
   }
 };
 
@@ -935,7 +968,112 @@ document.getElementById("btn-pasta").onclick = async () => {
 
 document.getElementById("btn-ajustes").onclick = () => {
   refreshConfig();
+  carregarConvidados();
   ajustes.showModal();
+};
+
+function renderConvidados(lista) {
+  const box = document.getElementById("convidados-lista");
+  if (!box) return;
+  box.innerHTML = "";
+  if (!lista.length) {
+    box.innerHTML = "<li class='micro'>Ninguém na lista gratuita ainda.</li>";
+    return;
+  }
+  lista.forEach((item) => {
+    const li = document.createElement("li");
+    const estado = item.entrou ? "já entrou" : "ainda não criou a conta";
+    li.innerHTML = `${escapeHtml(item.nome)}${item.nota ? " · " + escapeHtml(item.nota) : ""} <span class="micro">(${estado})</span>`;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "ghost";
+    b.textContent = "Tirar";
+    b.onclick = () => removerConvidado(item.id);
+    li.appendChild(b);
+    box.appendChild(li);
+  });
+}
+
+async function carregarConvidados() {
+  const box = document.getElementById("convidados-box");
+  const r = await fetch(apiUrl("/api/convidados"));
+  if (r.status === 403) {
+    if (box) box.hidden = true;
+    return;
+  }
+  const data = await r.json();
+  if (!r.ok) return;
+  if (box) box.hidden = false;
+  renderConvidados(data.convidados || []);
+  const rex = await fetch(apiUrl("/api/exclusoes"));
+  const lista = document.getElementById("exclusoes-lista");
+  if (!lista || !rex.ok) return;
+  const pacote = await rex.json();
+  const itens = pacote.exclusoes || [];
+  lista.innerHTML = "";
+  if (!itens.length) {
+    lista.innerHTML = "<li class='micro'>Nenhuma exclusão registrada.</li>";
+    return;
+  }
+  itens.slice().reverse().forEach((item) => {
+    const li = document.createElement("li");
+    li.className = "micro";
+    li.textContent = `${item.quando || ""} · ${item.numero || item.processo || "processo"} · ${item.usuario || ""}`;
+    lista.appendChild(li);
+  });
+}
+
+async function removerConvidado(id) {
+  const r = await fetch(apiUrl("/api/convidados/remover"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  const data = await r.json();
+  if (!r.ok) return toast(data.detail || "Não tirei.");
+  renderConvidados(data.convidados || []);
+}
+
+document.getElementById("btn-convidado").onclick = async () => {
+  const r = await fetch(apiUrl("/api/convidados"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      nome: document.getElementById("convidado-nome").value.trim(),
+      nota: document.getElementById("convidado-nota").value.trim(),
+    }),
+  });
+  const data = await r.json();
+  if (!r.ok) return toast(data.detail || "Não incluí.");
+  document.getElementById("convidado-nome").value = "";
+  document.getElementById("convidado-nota").value = "";
+  renderConvidados(data.convidados || []);
+  toast("Convidado na lista gratuita.");
+};
+
+document.getElementById("prazo-tipo").onchange = () => {
+  document.getElementById("prazo-outro-wrap").hidden =
+    document.getElementById("prazo-tipo").value !== "outro";
+};
+
+document.getElementById("btn-prazo").onclick = async () => {
+  const fd = new FormData();
+  fd.append("data", document.getElementById("prazo-data").value);
+  fd.append("modo", document.getElementById("prazo-modo").value);
+  fd.append("tipo", document.getElementById("prazo-tipo").value);
+  fd.append("dias", document.getElementById("prazo-dias").value);
+  const r = await fetch(apiUrl("/api/prazo"), { method: "POST", body: fd });
+  const data = await r.json();
+  const out = document.getElementById("prazo-resultado");
+  if (!r.ok) {
+    out.hidden = false;
+    out.textContent = data.detail || "Não calculei.";
+    return;
+  }
+  document.getElementById("prazo").value = data.resumo;
+  out.hidden = false;
+  const pulados = (data.pulados || []).length ? " Dias fora da conta: " + data.pulados.join(", ") + "." : "";
+  out.textContent = data.resumo + pulados;
 };
 
 document.getElementById("preset").addEventListener("change", async (ev) => {
@@ -1157,7 +1295,10 @@ if (!localStorage.getItem("harvey_onboard")) {
 fetch(apiUrl("/api/eu"))
   .then((r) => r.json())
   .then((eu) => {
-    if (eu.nome) document.getElementById("btn-conta").textContent = eu.nome;
+    if (eu.nome) {
+    const extra = eu.acesso === "cortesia" ? " · gratuito" : eu.acesso === "avulso" ? " · por ação" : "";
+    document.getElementById("btn-conta").textContent = eu.nome + extra;
+  }
   })
   .catch(() => {});
 

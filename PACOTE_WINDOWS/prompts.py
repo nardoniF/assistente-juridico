@@ -41,6 +41,47 @@ Lembrete: termine com o bloco CHECKLIST FORENSICO (SIM/NAO/NA em cada linha).
 """
 
 
+def bloco_lado(persona: str, area: str) -> str:
+    """Roteiro da peça conforme o lado e a área. Não troca o extrato por tese genérica."""
+    lados = {
+        "reclamada": (
+            "Escreva pela RECLAMADA. Impugne pedido a pedido. "
+            "Onde o extrato mostrar pagamento, peça dedução ou exclusão. Não invente prova."
+        ),
+        "reclamante": (
+            "Escreva pelo RECLAMANTE. Fundamente só o que estiver no extrato. "
+            "Não invente depoimento, documento nem valor."
+        ),
+        "juizo": (
+            "Escreva minuta de juízo, neutra. Não advogue por nenhuma parte. "
+            "Separe o que consta nos autos do que é pedido da parte."
+        ),
+    }
+    areas = {
+        "trabalhista": (
+            "Área trabalhista. Use a CLT e o processo do trabalho. "
+            "Súmula só com o enunciado da biblioteca anexada."
+        ),
+        "civel": (
+            "Área cível. Não use a CLT como se o caso fosse trabalhista. "
+            "Se o extrato for de reclamação trabalhista, diga que a área escolhida não combina com os autos."
+        ),
+        "previdenciario": (
+            "Área previdenciária. Não invente benefício, número de benefício, DER nem cálculo. "
+            "Se esses dados não estiverem no extrato, escreva que não consta."
+        ),
+        "familia": (
+            "Área de família. Não invente guarda, alimentos, visita nem acordo. "
+            "Use só o que estiver no extrato."
+        ),
+    }
+    linhas = [lados.get(persona, ""), areas.get(area, "")]
+    linhas = [l for l in linhas if l]
+    if not linhas:
+        return ""
+    return "\n\nPOSIÇÃO E ÁREA\n" + "\n".join(linhas) + "\n"
+
+
 def prompt_resumo(meta: dict, texto: str) -> str:
     return f"""Analise o extrato e produza resumo operacional para o advogado da RECLAMADA.
 
@@ -76,7 +117,9 @@ Texto:
 {texto}
 
 Para cada tese existente nos autos, use só súmula cujo enunciado esteja na biblioteca anexada ao pedido.
-Se o número não estiver nessa biblioteca, escreva NÃO CONSTA DA BIBLIOTECA HARVEY. Não invente acórdão.
+Se o número não estiver nessa biblioteca, escreva NÃO CONSTA DA BIBLIOTECA HARVEY.
+Não invente acórdão, ementa nem número de RR, AIRR ou ARR.
+Se um número CNJ de processo já estiver no extrato, pode repeti-lo e dizer que a fonte é a Pesquisa de Jurisprudência do TST.
 Súmula cancelada no Livro do TST não serve de fundamento vigente.
 Inclua linha sobre dedução/compensação de valores já pagos se houver condenação de verbas rescisórias ou intervalo, usando a Súmula 18 apenas no texto oficial da biblioteca.
 """

@@ -109,9 +109,38 @@
                 <option value="familia">Família</option>
               </select>
             </label>
-            <label>Prazo (confira no PJe)
-              <input id="prazo" type="text" placeholder="ex.: 8 dias úteis" />
-            </label>
+          </div>
+          <div class="prazo-box">
+            <p class="micro">Prazo em dias úteis. Confira no PJe — isto não certifica tempestividade.</p>
+            <div class="contexto-row">
+              <label>Data no PJe
+                <input id="prazo-data" type="date" />
+              </label>
+              <label>Essa data é
+                <select id="prazo-modo">
+                  <option value="ciencia">Ciência (abriu nesse dia)</option>
+                  <option value="envio">Envio (não abriu; ciência no 10º dia corrido)</option>
+                </select>
+              </label>
+              <label>Peça
+                <select id="prazo-tipo">
+                  <option value="recurso">Recurso ordinário · 8 dias úteis</option>
+                  <option value="embargos">Embargos de declaração · 5</option>
+                  <option value="contrarrazoes">Contrarrazões · 8</option>
+                  <option value="agravo">Agravo de petição · 8</option>
+                  <option value="revista">Recurso de revista · 8</option>
+                  <option value="outro">Outro</option>
+                </select>
+              </label>
+            </div>
+            <div class="toolbar">
+              <label id="prazo-outro-wrap" hidden>Dias úteis
+                <input id="prazo-dias" type="number" min="1" max="60" value="8" />
+              </label>
+              <button type="button" id="btn-prazo" class="ghost">Calcular prazo</button>
+            </div>
+            <p id="prazo-resultado" class="prazo-resultado" hidden></p>
+            <input id="prazo" type="hidden" />
           </div>
           <div class="chips" id="prompt-chips">
             <button type="button" data-prompt="Cruze férias, 13º, aviso e FGTS com o TRCT e comprovantes. Cite as folhas. Peça dedução ou compensação do que já foi pago.">Cruzar TRCT</button>
@@ -127,7 +156,7 @@
           <div class="toolbar">
             <button type="button" id="btn-refinar" class="accent">Refinar esta peça (sobrepoe)</button>
             <button type="button" id="btn-fechar" class="ghost">Peça fechada</button>
-            <button type="button" id="btn-conferir-sumulas" class="ghost">Conferir súmulas</button>
+            <button type="button" id="btn-conferir-sumulas" class="ghost">Conferir jurisprudência</button>
             <p class="hint" id="peca-estado">Sem peça aberta. A primeira ação cria o arquivo.</p>
           </div>
           <div id="pje-box" class="chips"></div>
@@ -142,6 +171,7 @@
               <button type="button" data-camada="capa">Capa</button>
               <button type="button" data-camada="sentenca">Sentença</button>
               <button type="button" data-camada="provas">Provas</button>
+              <button type="button" data-camada="leitura">Leitura</button>
             </div>
           </div>
           <pre id="camadas-texto" class="camadas-texto"></pre>
@@ -299,7 +329,22 @@
       <label>OAB
         <input id="oab" type="text" placeholder="OAB/SP 000000" />
       </label>
-      <p class="muted micro">Plano atual: gratuito (Groq + Render free, que dorme). Domínio próprio, servidor sempre ligado, WhatsApp oficial e app de loja dependem de conta paga.</p>
+      <div id="convidados-box">
+        <h3>Convidados</h3>
+        <p class="muted micro">Acesso gratuito para quem você incluir aqui. Os demais, quando a cobrança existir, pagam por ação: cada peça nova é uma. Refinar a mesma peça não cobra de novo.</p>
+        <ul id="convidados-lista" class="convidados-lista"></ul>
+        <label>Nome do advogado
+          <input id="convidado-nome" type="text" placeholder="Nome como vai entrar na conta" />
+        </label>
+        <label>Nota
+          <input id="convidado-nota" type="text" placeholder="OAB, escritório" />
+        </label>
+        <button type="button" id="btn-convidado" class="ghost">Incluir na lista gratuita</button>
+      </div>
+        <p class="muted micro">Cobrança por ação ainda não está ligada. Domínio, servidor sem dormir e o pagamento em si dependem de conta paga.</p>
+        <h3>Guarda dos arquivos</h3>
+        <p class="muted micro">O PDF fica na pasta deste Harvey até você excluir o processo. A exclusão fica registrada fora da pasta, com data e número, sem cópia do PDF.</p>
+        <ul id="exclusoes-lista" class="convidados-lista"></ul>
       <label>Modelo (avançado)
         <input id="api-model" type="text" />
       </label>

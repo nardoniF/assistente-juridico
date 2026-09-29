@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+import acordaos
 import contas
 import docx_out
 import sumulas
@@ -24,13 +25,14 @@ import extractor
 import llm
 import memory
 import organizer
+import prazos
 from organizer import DEFAULT_CONFIG, PRESETS, web_mode
 import prompts
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 CACHE_NAME = "extrato.json"
-EXTRACT_VERSION = 5
+EXTRACT_VERSION = 7
 PRODUCT = "Harvey.ai"
 SITE_PASSWORD = (os.environ.get("SITE_PASSWORD") or "").strip()
 JOBS: dict[str, dict] = {}
@@ -244,14 +246,59 @@ def sair(request: Request):
     return {"ok": True}
 
 
+def _pode_convidar(request: Request) -> bool:
+    if not contas.tem_usuarios():
+        return True
+    user = getattr(request.state, "user", None) or {}
+    return bool(user.get("id")) and contas.acesso(user["id"]) == "dono"
+
+
 @app.get("/api/eu")
 def eu(request: Request):
     user = getattr(request.state, "user", None)
+    if user and user.get("id"):
+        nivel = contas.acesso(user["id"])
+    elif not contas.tem_usuarios():
+        nivel = "dono"
+    else:
+        nivel = ""
     return {
         "logado": bool(user),
         "exige_login": contas.tem_usuarios(),
         "nome": (user or {}).get("nome") or "",
+        "acesso": nivel,
+        "cobranca": "por_acao",
+        "paga_acao": nivel == "avulso",
     }
+
+
+@app.get("/api/convidados")
+def get_convidados(request: Request):
+    if not _pode_convidar(request):
+        raise HTTPException(403, "Só quem distribui o acesso gratuito vê essa lista.")
+    return {"convidados": contas.listar_convidados()}
+
+
+@app.post("/api/convidados")
+def post_convidado(request: Request, payload: dict):
+    if not _pode_convidar(request):
+        raise HTTPException(403, "Só quem distribui o acesso gratuito inclui convidado.")
+    try:
+        item = contas.adicionar_convidado(payload.get("nome") or "", payload.get("nota") or "")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "convidado": item, "convidados": contas.listar_convidados()}
+
+
+@app.post("/api/convidados/remover")
+def del_convidado(request: Request, payload: dict):
+    if not _pode_convidar(request):
+        raise HTTPException(403, "Só quem distribui o acesso gratuito tira alguém da lista.")
+    try:
+        contas.remover_convidado(payload.get("id") or "")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "convidados": contas.listar_convidados()}
 
 
 def _load_or_extract(case: Path, *, refresh: bool = False) -> dict:
@@ -578,10 +625,7 @@ def _build_user_prompt(
         cruz = "\n\n" + extractor.cruzamento_texto(rows)
         if meta.get("extrato_manual"):
             cruz += "\nExtrato corrigido pela advogada: priorize estes dados de capa e verbas.\n"
-    if persona in ("reclamada", "reclamante", "juizo"):
-        cruz += f"\nPosição da peça: {persona}.\n"
-    if area:
-        cruz += f"\nÁrea: {area}.\n"
+    cruz += prompts.bloco_lado(persona, area)
     if prazo:
         cruz += (
             f"\nPrazo informado: {prazo}. Trate como lembrete. "
@@ -956,7 +1000,29 @@ def abrir_pasta(case_id: str):
 
 @app.post("/api/conferir-sumulas")
 def conferir_sumulas(texto: str = Form(...)):
-    return sumulas.conferir(texto)
+    base = sumulas.conferir(texto)
+    ac = acordaos.conferir(texto)
+    base["acordaos"] = ac["encontrados"]
+    base["acordaos_ausentes"] = ac["ausentes"]
+    base["avisos"] = (base.get("avisos") or []) + ac["avisos"]
+    return base
+
+
+@app.post("/api/prazo")
+def prazo_calc(
+    data: str = Form(...),
+    modo: str = Form("ciencia"),
+    tipo: str = Form("recurso"),
+    dias: str = Form(""),
+):
+    try:
+        n = int(dias) if (dias or "").strip() else None
+    except ValueError:
+        raise HTTPException(400, "Dias úteis inválidos.")
+    try:
+        return prazos.calcular(data, modo, tipo, n)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 def _sinais(texto: str, meta: dict, case: Path) -> dict:
@@ -972,13 +1038,7 @@ def _sinais(texto: str, meta: dict, case: Path) -> dict:
     if "SENTEN" in tipos and "recurso" not in fechadas and not estado.get("aberta"):
         sugestao = "Há sentença no índice e o recurso ainda não está fechado. Próxima peça sugerida: Recurso Ordinário."
     rows = ((meta.get("extrato") or {}).get("verbas")) or meta.get("cruzamento") or []
-    risco_n = sum(1 for r in rows if isinstance(r, dict) and r.get("condenado") == "sim" and r.get("pago") == "sim")
-    risco = ""
-    if risco_n:
-        risco = (
-            f"{risco_n} verba(s) com condenação e pagamento localizados no extrato. "
-            "Isso não é previsão de resultado nem valor de acordo."
-        )
+    risco = extractor.estrategia_acordo(rows) if rows else ""
     camadas = meta.get("camadas") or {}
     return {
         "jurisprudencia_avisos": avisos,
@@ -1059,9 +1119,24 @@ def excluir(request: Request, case_id: str = Form(...)):
         case = organizer.case_dir(case_id)
     except Exception:
         raise HTTPException(404, "Processo não encontrado.")
+    numero = ""
+    meta_path = case / "meta.json"
+    if meta_path.exists():
+        try:
+            numero = json.loads(meta_path.read_text(encoding="utf-8")).get("numero") or ""
+        except Exception:
+            numero = ""
+    memory.registrar_exclusao(_nome(request), case.name, numero)
     memory.auditar(case, _nome(request), "excluir", case.name)
     shutil.rmtree(case)
     return {"ok": True}
+
+
+@app.get("/api/exclusoes")
+def exclusoes(request: Request):
+    if not _pode_convidar(request):
+        raise HTTPException(403, "Só quem distribui o acesso vê o registro de exclusões.")
+    return {"exclusoes": memory.listar_exclusoes()}
 
 
 @app.get("/api/auditoria")

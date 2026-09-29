@@ -117,10 +117,19 @@ Objetivo: melhor assistente jurídico prático do planeta — começando por **t
 8. ~~PDF único de protocolo, nome estável para o PJe~~ ✅  
 9. ~~Prévia formatada, histórico do que mudou, folha clicável, camadas, OAB no PDF, login, juntar páginas, persona/área, prazo, WhatsApp (link), LGPD, auditoria, segredo, disclaimer, fila de PDF grande, modo claro, PT/EN/ES da interface, próxima peça, risco/acordo, jurisprudência conferida na biblioteca local~~ ✅  
 10. ~~Súmula citada abre o enunciado do Livro do TST e avisa se está cancelada~~ ✅  
+11. ~~Prazo em dias úteis a partir da data do PJe, com aviso de conferir~~ ✅  
+12. ~~Acórdão citado: ementa lida na pesquisa do TST e link da fonte; número ausente não ganha texto~~ ✅  
+13. ~~OCR além das 30 primeiras: até 120 páginas-imagem, primeiro as que ficam perto de TRCT, holerite, comprovante ou laudo, com aviso do que ficou de fora~~ ✅  
+14. ~~Leitura em camadas: sentença, comprovante, defesa, ata e inicial com teto próprio~~ ✅  
+15. ~~Peça por lado (reclamada, reclamante, juízo) e por área, com roteiro próprio~~ ✅  
+16. ~~Acordo só com verba condenada e paga no extrato; sem valor e sem previsão de resultado~~ ✅  
+17. ~~Número ausente no TST diz qual TRT consultar, sem ementa inventada~~ ✅  
+18. ~~Carnaval e Corpus Christi listados no prazo, sem serem descontados~~ ✅  
+19. ~~Exclusão do processo registrada fora da pasta~~ ✅  
 
 Fora do código (precisa de conta paga): domínio próprio, Render sem dormir, planos com cobrança, WhatsApp Business API, backup no Google Drive, app de loja.
 
-Próximo: prazo calculado em dias úteis, com o aviso de conferir no PJe.
+Próximo: publicar esta leva. Servidor sem dormir, domínio e cobrança seguem dependendo de conta paga.
 
 ---
 

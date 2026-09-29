@@ -9,6 +9,7 @@ from organizer import HOME_APP, ensure_dirs
 PROMPTS_CASE = "prompts_caso.json"
 ULTIMA = "ultima_geracao.json"
 GLOBAL_FILE = HOME_APP / "aprendizado_global.json"
+EXCLUSOES = HOME_APP / "exclusoes.jsonl"
 
 
 def _now() -> str:
@@ -112,7 +113,13 @@ def combined_instructions(case: Path, tipo: str, extra: str = "") -> str:
             continue
         seen.add(p)
         uniq.append(p)
-    return "\n".join(f"- {u}" for u in uniq)
+    if not uniq:
+        return ""
+    return (
+        "Estilo pedido pela advogada. Use só o jeito de escrever. "
+        "Não copie fato, valor, folha, parte nem número de outro processo.\n"
+        + "\n".join(f"- {u}" for u in uniq)
+    )
 
 
 def save_ultima(case: Path, payload: dict) -> None:
@@ -237,6 +244,34 @@ def reabrir_peca(case: Path, tipo: str) -> dict:
         },
     )
     return estado_publico(case)
+
+
+def registrar_exclusao(usuario: str, case_id: str, numero: str = "") -> None:
+    """Fica fora da pasta do processo, porque a pasta é apagada em seguida."""
+    ensure_dirs()
+    line = json.dumps(
+        {
+            "quando": _now(),
+            "usuario": usuario or "local",
+            "processo": case_id,
+            "numero": (numero or "")[:40],
+        },
+        ensure_ascii=False,
+    )
+    with EXCLUSOES.open("a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
+
+
+def listar_exclusoes(limite: int = 20) -> list[dict]:
+    if not EXCLUSOES.exists():
+        return []
+    linhas = []
+    for line in EXCLUSOES.read_text(encoding="utf-8").splitlines()[-limite:]:
+        try:
+            linhas.append(json.loads(line))
+        except Exception:
+            continue
+    return linhas
 
 
 def auditar(case: Path, usuario: str, acao: str, detalhe: str = "") -> None:

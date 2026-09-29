@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 
 import fitz
@@ -138,6 +139,38 @@ def build_cruzamento(pages: list[str], sent_idx: list[int], pay_idx: list[int]) 
     return rows
 
 
+def estrategia_acordo(rows: list[dict]) -> str:
+    """Estratégia só com o cruzamento. Não prevê resultado nem sugere valor."""
+    deduzir = []
+    sem_prova = []
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        nome = r.get("verba") or "verba"
+        if r.get("condenado") == "sim" and r.get("pago") == "sim":
+            fls = ", ".join(str(n) for n in (r.get("folhas_pago") or [])[:4])
+            deduzir.append(f"{nome} (fls. {fls or '—'})")
+        elif r.get("condenado") == "sim":
+            sem_prova.append(nome)
+    partes = []
+    if deduzir:
+        partes.append(
+            "Ponto de dedução ou de conversa de acordo, porque o extrato achou condenação e pagamento: "
+            + "; ".join(deduzir)
+            + "."
+        )
+    if sem_prova:
+        partes.append(
+            "Não tratar como pago, o extrato não achou comprovante com essas palavras: "
+            + "; ".join(sem_prova)
+            + "."
+        )
+    if not partes:
+        partes.append("O extrato não mostrou verba condenada com pagamento localizado.")
+    partes.append("Isto não prevê resultado nem sugere valor de acordo.")
+    return " ".join(partes)
+
+
 def cruzamento_texto(rows: list[dict]) -> str:
     lines = ["=== CRUZAMENTO COMPROVANTE × CONDENAÇÃO (heurística, conferir) ==="]
     for r in rows:
@@ -212,8 +245,27 @@ def extract_cover_meta(doc: fitz.Document) -> dict:
     }
 
 
-MAX_OCR_PAGES = 30
+MAX_OCR_PAGES = 120
+OCR_SECONDS = 150
 _OCR_BROKEN = False
+
+
+def _rank_ocr(texts: list[str], candidatos: list[int]) -> list[int]:
+    """Páginas-imagem perto de TRCT, holerite ou laudo passam na frente das primeiras do PDF."""
+
+    def pontos(i: int) -> tuple[int, int]:
+        janela = " ".join(texts[j] for j in range(max(0, i - 2), min(len(texts), i + 3)))
+        u = _norm(janela)
+        peso = 0
+        if any(k in u for k in PAYMENT_KEYWORDS):
+            peso += 10
+        if any(k in u for k in ("LAUDO", "SENTENÇA", "SENTENCA")):
+            peso += 4
+        if len((texts[i] or "").strip()) < 20:
+            peso += 1
+        return (-peso, i)
+
+    return sorted(candidatos, key=pontos)
 
 
 def _needs_ocr(page: fitz.Page, text: str) -> bool:
@@ -248,18 +300,34 @@ def extract_process(pdf_path: Path, max_chars: int = 550_000) -> dict:
         index: list[dict] = []
         page_scores: list[tuple[int, list[str]]] = []
         ocr_pages: list[int] = []
-        ocr_budget = MAX_OCR_PAGES
+        candidatos: list[int] = []
 
         for i in range(doc.page_count):
             page = doc[i]
             t = page.get_text() or ""
-            if ocr_budget > 0 and _needs_ocr(page, t):
-                ocr = _ocr_page(page)
-                if ocr.strip():
-                    t = (t + "\n" + ocr).strip()
-                    ocr_pages.append(i + 1)
-                    ocr_budget -= 1
             pages.append(t)
+            if _needs_ocr(page, t):
+                candidatos.append(i)
+
+        ocr_puladas = 0
+        inicio = time.monotonic()
+        for n, i in enumerate(_rank_ocr(pages, candidatos)):
+            if len(ocr_pages) >= MAX_OCR_PAGES:
+                ocr_puladas = len(candidatos) - n
+                break
+            if ocr_pages and time.monotonic() - inicio > OCR_SECONDS:
+                ocr_puladas = len(candidatos) - n
+                break
+            ocr = _ocr_page(doc[i])
+            if _OCR_BROKEN:
+                ocr_puladas = len(candidatos) - n
+                break
+            if ocr.strip():
+                pages[i] = (pages[i] + "\n" + ocr).strip()
+                ocr_pages.append(i + 1)
+        ocr_pages.sort()
+
+        for i, t in enumerate(pages):
             sc, hits = _score_page(t)
             page_scores.append((sc, hits))
             head = " ".join(t.split()[:40]).upper()
@@ -313,7 +381,10 @@ def extract_process(pdf_path: Path, max_chars: int = 550_000) -> dict:
             "=== INVENTÁRIO DOCUMENTAL (varredura automática) ===\n"
             f"Total páginas PDF: {len(pages)}\n"
             f"Páginas com indício de pagamento/comprovante: {len(payment_pages)}\n"
+            f"Páginas-imagem lidas por OCR: {len(ocr_pages)} de {len(candidatos)}\n"
         )
+        if ocr_puladas:
+            inv += f"Páginas-imagem ainda sem OCR nesta leitura: {ocr_puladas}\n"
         for p in payment_pages[:40]:
             inv += f"- Pág. {p['page']} (score {p['score']}): {', '.join(p['marcadores'][:6])}\n"
         sections.append(inv)
@@ -325,11 +396,21 @@ def extract_process(pdf_path: Path, max_chars: int = 550_000) -> dict:
                 for j in range(max(0, i - 2), min(len(pages), i + 15)):
                     wanted.add(j)
 
-        def block(title: str, indices: list[int]) -> str:
+        def block(title: str, indices: list[int], limite: int) -> tuple[str, int]:
             parts = [f"\n\n=== {title} ===\n"]
+            usados = 0
+            entrou = 0
             for i in indices:
-                parts.append(f"===== PAGINA {i + 1} =====\n{pages[i]}")
-            return "\n".join(parts)
+                pedaco = f"===== PAGINA {i + 1} =====\n{pages[i]}\n"
+                if entrou and usados + len(pedaco) > limite:
+                    break
+                parts.append(pedaco)
+                usados += len(pedaco)
+                entrou += 1
+            fora = max(0, len(indices) - entrou)
+            if fora:
+                parts.append(f"[{fora} página(s) desta camada ficaram de fora desta leitura.]\n")
+            return "\n".join(parts), fora
 
         pay_idx = sorted({p["page"] - 1 for p in payment_pages})
         sent_idx = sorted(
@@ -348,28 +429,41 @@ def extract_process(pdf_path: Path, max_chars: int = 550_000) -> dict:
         oral_idx = sorted(i for i in wanted if "ATA DE AUDIÊNCIA" in _norm(pages[i][:400]))
         rest = sorted(wanted - set(pay_idx) - set(sent_idx) - set(defesa_idx) - set(oral_idx))
 
+        fora_total = 0
         if sent_idx:
-            sections.append(block("SENTENÇA / DISPOSITIVO (prioridade)", sent_idx[:80]))
+            trecho, fora = block("SENTENÇA / DISPOSITIVO (prioridade)", sent_idx[:80], 160_000)
+            sections.append(trecho)
+            fora_total += fora
         if pay_idx:
-            sections.append(block("COMPROVANTES — TRCT, RECIBOS, HOLERITES, FGTS, PONTO", pay_idx[:120]))
+            trecho, fora = block(
+                "COMPROVANTES — TRCT, RECIBOS, HOLERITES, FGTS, PONTO", pay_idx[:120], 160_000
+            )
+            sections.append(trecho)
+            fora_total += fora
         if defesa_idx:
-            sections.append(block("CONTESTAÇÃO E DOCUMENTOS DA RÉ", defesa_idx[:60]))
+            trecho, fora = block("CONTESTAÇÃO E DOCUMENTOS DA RÉ", defesa_idx[:60], 70_000)
+            sections.append(trecho)
+            fora_total += fora
         if oral_idx:
-            sections.append(block("PROVA ORAL — ATAS", oral_idx[:40]))
-        sections.append(block("INICIAL E DEMAIS TRECHOS", rest[:100]))
+            trecho, fora = block("PROVA ORAL — ATAS", oral_idx[:40], 40_000)
+            sections.append(trecho)
+            fora_total += fora
+        trecho, fora = block("INICIAL E DEMAIS TRECHOS", rest[:100], 80_000)
+        sections.append(trecho)
+        fora_total += fora
 
         cruzamento = build_cruzamento(pages, sent_idx, pay_idx)
         sections.insert(1, cruzamento_texto(cruzamento))
 
         blob = "\n".join(sections)
-        truncated = False
+        truncated = fora_total > 0
         if len(blob) > max_chars:
-            blob = blob[:max_chars] + "\n\n[texto recortado — priorizados comprovantes e sentença]"
+            blob = blob[:max_chars] + "\n\n[texto recortado — cada camada tem teto próprio]"
             truncated = True
 
         meta["indice"] = compact
         meta["paginas_pagamento"] = payment_pages[:50]
-        meta["ocr_paginas"] = ocr_pages[:40]
+        meta["ocr_paginas"] = ocr_pages
         meta["cruzamento"] = cruzamento
         meta["extrato"] = {
             "numero": meta.get("numero") or "",
@@ -383,14 +477,21 @@ def extract_process(pdf_path: Path, max_chars: int = 550_000) -> dict:
             "capa": (pages[0] if pages else "")[:1600],
             "sentenca": "\n".join(pages[i][:500] for i in sent_idx[:6])[:2000],
             "provas": "\n".join(pages[i][:400] for i in pay_idx[:8])[:2000],
+            "leitura": (
+                f"PDF com {len(pages)} páginas. "
+                f"A leitura da IA reserva espaço separado para sentença, comprovante, defesa, ata e inicial. "
+                f"Páginas de camada que ficaram de fora por tamanho: {fora_total}."
+            ),
         }
         meta["extracao"] = {
             "paginas_selecionadas": len(wanted),
             "paginas_comprovante": len(pay_idx),
             "ocr_paginas": len(ocr_pages),
+            "ocr_candidatas": len(candidatos),
+            "ocr_puladas": ocr_puladas,
             "ocr_disponivel": not _OCR_BROKEN,
             "truncado": truncated,
-            "versao": 5,
+            "versao": 7,
         }
         return {"meta": meta, "texto": blob, "paginas": doc.page_count}
     finally:
