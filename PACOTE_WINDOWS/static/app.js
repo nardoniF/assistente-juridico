@@ -1200,31 +1200,112 @@ document.getElementById("btn-tema").onclick = () => {
   const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
   document.documentElement.dataset.theme = next;
   localStorage.setItem("harvey_theme", next);
-  document.getElementById("btn-tema").textContent = next === "light" ? "Modo escuro" : "Modo claro";
+  aplicarIdioma(document.getElementById("idioma").value, false);
 };
 
 const I18N = {
   pt: {
     sub: "Processos em PDF → peças em Word e PDF",
     disc: "xThemis é assistente de redação. Não é advogado, não protocola e não garante prazo, jurisprudência nem resultado.",
+    temaClaro: "Modo claro",
+    temaEscuro: "Modo escuro",
   },
   en: {
     sub: "Case PDF → Word and PDF drafts",
     disc: "xThemis drafts text. It is not a lawyer, does not file, and does not guarantee deadlines, case law, or outcome.",
+    temaClaro: "Light mode",
+    temaEscuro: "Dark mode",
+    ui: {
+      "#btn-conta": "Sign in",
+      "#btn-ajustes": "AI settings",
+      "#dropzone strong": "Attach the case PDF",
+      "#dropzone span": "Copies into the case folder · becomes the only processo.pdf",
+      ".rail-head h2": "Cases",
+      "#stage-eyebrow": "Select or import a case",
+      "#caso-titulo": "No active case",
+      "#empty-state p": "Attach the PDF: xThemis creates the folder and stores one processo.pdf. Each action becomes one Word file and one PDF. Refine overwrites that same draft. When the court adds pages, use Update case and the main PDF is replaced.",
+      "#btn-segredo": "Confidential",
+      "#btn-excluir": "Delete case",
+      "#btn-pasta": "Backup (ZIP)",
+      "#btn-ver-prompts": "Prompts",
+      "#empty-state .empty-kicker": "How it works",
+      "#empty-state h3": "One case. One draft per action.",
+      ".dialogue h3": "Talk to the AI",
+      ".dialogue .switch span": "Save what I teach it",
+      "#btn-prazo": "Count the deadline",
+      "#btn-refinar": "Refine this draft (overwrites)",
+      "#btn-fechar": "Draft closed",
+      "#btn-conferir-sumulas": "Check case law",
+      "#peca-estado": "No open draft. The first action creates the file.",
+      "#camadas-wrap h3": "Layered reading",
+      "#indice-wrap h3": "Case index",
+      "#extrato-wrap h3": "Case extract",
+      "#btn-salvar-extrato": "Save extract",
+      ".actions h3": "Draft a filing",
+      "#chat-titulo": "Result",
+      "#btn-salvar": "Write Word + PDF again",
+      "#ajustes h2": "Settings",
+      "#login h2": "Sign in",
+      "#onb-title": "Who will use it",
+      "#onb-pular": "Skip",
+      "#onb-next": "Continue",
+      "[data-tipo=resumo]": "Summary",
+      "[data-tipo=jurisprudencia]": "Case law",
+      "[data-tipo=defesa]": "Defense",
+      "[data-tipo=replica]": "Reply",
+      "[data-tipo=recurso]": "Appeal",
+      "[data-tipo=contrarrazoes]": "Response brief",
+      "[data-tipo=alegacoes_finais]": "Closing argument",
+      "[data-tipo=embargos]": "Motion to clarify",
+      "[data-tipo=impugnacao_laudo]": "Challenge expert report",
+      "[data-tipo=impugnacao_calculos]": "Challenge calculations",
+      "[data-tipo=manifestacao]": "Filing",
+      "[data-tipo=peticao]": "Petition",
+      "[data-tipo=acordo]": "Settlement",
+      "[data-tipo=personalizado]": "Custom request",
+      "[data-tipo=tutela]": "Emergency relief",
+      "[data-tipo=execucao]": "Enforcement",
+      "[data-tipo=embargos_execucao]": "Execution challenge",
+      "[data-tipo=agravo_peticao]": "Execution appeal",
+      "[data-tipo=agravo_instrumento]": "Interlocutory appeal",
+      "[data-tipo=revista]": "Higher-court appeal",
+      "[data-tipo=quesitos]": "Expert questions",
+    },
   },
   es: {
     sub: "PDF del proceso → borradores en Word y PDF",
     disc: "xThemis redacta. No es abogado, no protocoliza y no garantiza plazo, jurisprudencia ni resultado.",
+    temaClaro: "Modo claro",
+    temaEscuro: "Modo oscuro",
   },
 };
 
-document.getElementById("idioma").onchange = (ev) => {
-  const lang = ev.target.value;
-  localStorage.setItem("harvey_lang", lang);
+function langDoDominio() {
+  const host = (location.hostname || "").toLowerCase().replace(/^www\./, "");
+  if (host === "xthemis.com") return "en";
+  if (host === "xthemis.com.br") return "pt";
+  return null;
+}
+
+function aplicarIdioma(lang, gravar) {
   const pack = I18N[lang] || I18N.pt;
+  if (gravar) localStorage.setItem("harvey_lang", lang);
   document.getElementById("brand-sub").textContent = pack.sub;
   document.getElementById("disclaimer").textContent = pack.disc;
   document.documentElement.lang = lang === "pt" ? "pt-BR" : lang;
+  const tema = document.documentElement.dataset.theme === "light";
+  document.getElementById("btn-tema").textContent = tema
+    ? pack.temaEscuro || "Modo escuro"
+    : pack.temaClaro || "Modo claro";
+  Object.entries(pack.ui || {}).forEach(([sel, texto]) => {
+    document.querySelectorAll(sel).forEach((el) => {
+      el.textContent = texto;
+    });
+  });
+}
+
+document.getElementById("idioma").onchange = (ev) => {
+  aplicarIdioma(ev.target.value, true);
 };
 
 document.getElementById("btn-conta").onclick = () => document.getElementById("login").showModal();
@@ -1291,10 +1372,9 @@ document.getElementById("onb-pular").onclick = () => {
 
 const tema = localStorage.getItem("harvey_theme") || "dark";
 document.documentElement.dataset.theme = tema;
-document.getElementById("btn-tema").textContent = tema === "light" ? "Modo escuro" : "Modo claro";
-const lang = localStorage.getItem("harvey_lang") || "pt";
+const lang = localStorage.getItem("harvey_lang") || langDoDominio() || "pt";
 document.getElementById("idioma").value = lang;
-document.getElementById("idioma").dispatchEvent(new Event("change"));
+aplicarIdioma(lang, false);
 if (!localStorage.getItem("harvey_onboard")) {
   pintarOnb();
   document.getElementById("onboarding").showModal();
