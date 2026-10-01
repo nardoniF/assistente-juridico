@@ -32,8 +32,8 @@ import prompts
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 CACHE_NAME = "extrato.json"
-EXTRACT_VERSION = 7
-PRODUCT = "Harvey.ai"
+EXTRACT_VERSION = 8
+PRODUCT = "xThemis"
 SITE_PASSWORD = (os.environ.get("SITE_PASSWORD") or "").strip()
 JOBS: dict[str, dict] = {}
 
@@ -90,6 +90,13 @@ ACTION_MAP = {
     "manifestacao": ("Manifestação", prompts.prompt_manifestacao, "Manifestacao"),
     "acordo": ("Minuta de acordo", prompts.prompt_acordo, "Minuta_Acordo"),
     "peticao": ("Petição intermediária", prompts.prompt_peticao, "Peticao"),
+    "tutela": ("Tutela de urgência", prompts.prompt_tutela, "Tutela_Urgencia"),
+    "execucao": ("Execução", prompts.prompt_execucao, "Execucao"),
+    "embargos_execucao": ("Embargos à execução", prompts.prompt_embargos_execucao, "Embargos_Execucao"),
+    "agravo_peticao": ("Agravo de petição", prompts.prompt_agravo_peticao, "Agravo_Peticao"),
+    "agravo_instrumento": ("Agravo de instrumento", prompts.prompt_agravo_instrumento, "Agravo_Instrumento"),
+    "revista": ("Recurso de revista", prompts.prompt_revista, "Recurso_Revista"),
+    "quesitos": ("Quesitos", prompts.prompt_quesitos, "Quesitos"),
     "personalizado": ("Pedido personalizado", None, "Peca_Personalizada"),
 }
 
@@ -117,9 +124,9 @@ async def optional_site_password(request: Request, call_next):
     if request.url.path.startswith("/api/"):
         return Response('{"detail":"senha do site"}', status_code=401, media_type="application/json")
     return Response(
-        "Harvey.ai — informe a senha (Authorization Basic).",
+        "xThemis — informe a senha (Authorization Basic).",
         status_code=401,
-        headers={"WWW-Authenticate": 'Basic realm="Harvey.ai"'},
+        headers={"WWW-Authenticate": 'Basic realm="xThemis"'},
     )
 
 
@@ -144,13 +151,18 @@ def app_js():
     return FileResponse(STATIC / "app.js", media_type="application/javascript")
 
 
+@app.get("/logo-xthemis.png")
+def logo_xthemis():
+    return FileResponse(STATIC / "logo-xthemis.png", media_type="image/png")
+
+
 @app.get("/config.js")
 def config_js():
     """Mesma origem: apiBase vazio."""
     body = (
         "window.HARVEY=window.HARVEY||{};"
         "window.HARVEY.apiBase=window.HARVEY.apiBase||'';"
-        "window.HARVEY.product='Harvey.ai';"
+        "window.HARVEY.product='xThemis';"
     )
     return Response(body, media_type="application/javascript")
 
@@ -1014,13 +1026,14 @@ def prazo_calc(
     modo: str = Form("ciencia"),
     tipo: str = Form("recurso"),
     dias: str = Form(""),
+    comarca: str = Form("cotia"),
 ):
     try:
         n = int(dias) if (dias or "").strip() else None
     except ValueError:
         raise HTTPException(400, "Dias úteis inválidos.")
     try:
-        return prazos.calcular(data, modo, tipo, n)
+        return prazos.calcular(data, modo, tipo, n, comarca)
     except ValueError as e:
         raise HTTPException(400, str(e))
 

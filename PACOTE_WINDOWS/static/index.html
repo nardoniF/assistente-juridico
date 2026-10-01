@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Harvey.ai</title>
+  <title>xThemis</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -15,8 +15,8 @@
   <div class="shell">
     <aside class="rail">
       <div class="brand">
-        <p class="brand-mark">3n20 · produto</p>
-        <h1>Harvey.ai</h1>
+        <img class="brand-logo" src="logo-xthemis.png" alt="xThemis Legal Intelligence" />
+        <h1 class="sr-only">xThemis</h1>
         <p class="brand-sub" id="brand-sub">Processos em PDF → peças em Word e PDF</p>
       </div>
       <div class="rail-tools">
@@ -77,7 +77,7 @@
         <p class="empty-kicker">Como funciona</p>
         <h3>Um processo. Uma peça por ação.</h3>
         <p>
-          Anexe o PDF: o Harvey cria a pasta e grava <strong>processo.pdf</strong> (só um).
+          Anexe o PDF: o xThemis cria a pasta e grava <strong>processo.pdf</strong> (só um).
           Cada ação (recurso, contestação…) vira <strong>um Word + um PDF</strong> com nome fixo.
           Enquanto você refina (“faltou X”), ele <strong>sobrepoe</strong> a mesma peça — sem v1/v2.
           Quando o tribunal atualizar os autos, use <strong>Atualizar processo</strong> e o PDF principal é substituído.
@@ -111,7 +111,7 @@
             </label>
           </div>
           <div class="prazo-box">
-            <p class="micro">Prazo em dias úteis. Confira no PJe — isto não certifica tempestividade.</p>
+            <p class="micro">Prazo em dias úteis, com a Portaria GP nº 50/2025 do TRT-2 em 2026. Confira no PJe — isto não certifica tempestividade.</p>
             <div class="contexto-row">
               <label>Data no PJe
                 <input id="prazo-data" type="date" />
@@ -128,8 +128,17 @@
                   <option value="embargos">Embargos de declaração · 5</option>
                   <option value="contrarrazoes">Contrarrazões · 8</option>
                   <option value="agravo">Agravo de petição · 8</option>
+                  <option value="agravo_instrumento">Agravo de instrumento · 8</option>
                   <option value="revista">Recurso de revista · 8</option>
+                  <option value="embargos_execucao">Embargos à execução · 5</option>
                   <option value="outro">Outro</option>
+                </select>
+              </label>
+              <label>Calendário
+                <select id="prazo-comarca">
+                  <option value="cotia">1ª Vara de Cotia</option>
+                  <option value="regional">Toda a 2ª Região</option>
+                  <option value="saopaulo">São Paulo (sede)</option>
                 </select>
               </label>
             </div>
@@ -248,6 +257,18 @@
                 <button data-tipo="personalizado" data-modo="arquivos" class="direct wide">Pedido personalizado</button>
               </div>
             </div>
+            <div>
+              <p class="group-label">Execução e recursos</p>
+              <div class="action-grid dense">
+                <button data-tipo="tutela" data-modo="arquivos" class="direct">Tutela de urgência</button>
+                <button data-tipo="execucao" data-modo="arquivos" class="direct">Execução</button>
+                <button data-tipo="embargos_execucao" data-modo="arquivos" class="direct">Embargos à execução</button>
+                <button data-tipo="agravo_peticao" data-modo="arquivos" class="direct">Agravo de petição</button>
+                <button data-tipo="agravo_instrumento" data-modo="arquivos" class="direct">Agravo de instrumento</button>
+                <button data-tipo="revista" data-modo="arquivos" class="direct">Recurso de revista</button>
+                <button data-tipo="quesitos" data-modo="arquivos" class="direct">Quesitos</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -292,7 +313,7 @@
         </div>
       </section>
     </main>
-    <p class="disclaimer" id="disclaimer">Harvey.ai é assistente de redação. Não é advogado, não protocola e não garante prazo, jurisprudência nem resultado.</p>
+    <p class="disclaimer" id="disclaimer">xThemis.ai é assistente de redação. Não é advogado, não protocola e não garante prazo, jurisprudência nem resultado.</p>
   </div>
 
   <div id="toast" class="toast" hidden></div>
@@ -341,9 +362,9 @@
         </label>
         <button type="button" id="btn-convidado" class="ghost">Incluir na lista gratuita</button>
       </div>
-        <p class="muted micro">Cobrança por ação ainda não está ligada. Domínio, servidor sem dormir e o pagamento em si dependem de conta paga.</p>
+        <p class="muted micro">Cobrança por ação ainda não está ligada. O endereço público é o 3n20. O servidor gratuito dorme sem visita e acorda no próximo acesso.</p>
         <h3>Guarda dos arquivos</h3>
-        <p class="muted micro">O PDF fica na pasta deste Harvey até você excluir o processo. A exclusão fica registrada fora da pasta, com data e número, sem cópia do PDF.</p>
+        <p class="muted micro">O PDF fica na pasta deste xThemis até você excluir o processo. A exclusão fica registrada fora da pasta, com data e número, sem cópia do PDF.</p>
         <ul id="exclusoes-lista" class="convidados-lista"></ul>
       <label>Modelo (avançado)
         <input id="api-model" type="text" />
@@ -360,7 +381,7 @@
   <dialog id="login">
     <form id="form-login">
       <h2>Entrar</h2>
-      <p class="muted">A primeira conta vira a advogada deste Harvey. Cada uma vê os processos dela.</p>
+      <p class="muted">A primeira conta vira a advogada deste xThemis. Cada uma vê os processos dela.</p>
       <label>Nome<input id="login-nome" type="text" autocomplete="username" required /></label>
       <label>Senha<input id="login-senha" type="password" autocomplete="current-password" minlength="4" required /></label>
       <label class="switch"><input type="checkbox" id="login-criar" /> <span>Criar esta conta</span></label>
@@ -379,7 +400,7 @@
         <label>Nome<input id="onb-nome" type="text" /></label>
         <label>Senha<input id="onb-senha" type="password" minlength="4" /></label>
       </div>
-      <p id="onb-2" hidden>Anexe o PDF completo do processo. O Harvey cria uma pasta e grava um único processo.pdf.</p>
+      <p id="onb-2" hidden>Anexe o PDF completo do processo. O xThemis cria uma pasta e grava um único processo.pdf.</p>
       <p id="onb-3" hidden>Escolha a peça (contestação, recurso…). Enquanto estiver aberta, use Refinar. Feche quando for protocolar.</p>
       <menu>
         <button type="button" id="onb-pular" class="ghost">Pular</button>

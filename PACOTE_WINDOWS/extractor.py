@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import time
 from pathlib import Path
@@ -246,35 +247,83 @@ def extract_cover_meta(doc: fitz.Document) -> dict:
 
 
 MAX_OCR_PAGES = 120
-OCR_SECONDS = 150
+# Cada página-imagem leva vários segundos. 120 páginas cabem nesta janela;
+# o que passar dela continua listado em ocr_puladas.
+OCR_SECONDS = 900
 _OCR_BROKEN = False
 
 
-def _rank_ocr(texts: list[str], candidatos: list[int]) -> list[int]:
-    """Páginas-imagem perto de TRCT, holerite ou laudo passam na frente das primeiras do PDF."""
+_OCR_ALTO = (
+    "TRCT",
+    "TERMO DE RESCISÃO",
+    "TERMO DE RESCISAO",
+    "HOLERITE",
+    "CONTRACHEQUE",
+    "RECIBO DE PAGAMENTO",
+    "RECIBO DE FÉRIAS",
+    "RECIBO DE FERIAS",
+    "CARTÃO PONTO",
+    "CARTAO PONTO",
+    "EXTRATO FGTS",
+    "GRRF",
+)
+_OCR_MEIO = ("LAUDO", "SENTENÇA", "SENTENCA")
 
-    def pontos(i: int) -> tuple[int, int]:
-        janela = " ".join(texts[j] for j in range(max(0, i - 2), min(len(texts), i + 3)))
-        u = _norm(janela)
-        peso = 0
-        if any(k in u for k in PAYMENT_KEYWORDS):
-            peso += 10
-        if any(k in u for k in ("LAUDO", "SENTENÇA", "SENTENCA")):
-            peso += 4
-        if len((texts[i] or "").strip()) < 20:
-            peso += 1
-        return (-peso, i)
+
+def _rank_ocr(texts: list[str], candidatos: list[int]) -> list[int]:
+    """Página-imagem perto de TRCT, holerite ou laudo passa na frente do restante do PDF."""
+    if not candidatos:
+        return []
+    cand = set(candidatos)
+    peso_pagina: dict[int, int] = {}
+    for i, texto in enumerate(texts):
+        if i in cand:
+            continue
+        u = _norm(texto)
+        if any(k in u for k in _OCR_ALTO):
+            peso_pagina[i] = 20
+        elif any(k in u for k in _OCR_MEIO):
+            peso_pagina[i] = 8
+
+    def pontos(i: int) -> tuple[int, int, int]:
+        peso, dist = 0, 99
+        for d in range(1, 41):
+            j = i - d
+            if j < 0:
+                break
+            p = peso_pagina.get(j)
+            if p:
+                peso, dist = p, d
+                break
+        return (-peso, dist, i)
 
     return sorted(candidatos, key=pontos)
 
 
 def _needs_ocr(page: fitz.Page, text: str) -> bool:
-    if len((text or "").strip()) >= 80:
+    # O PJe grava a assinatura eletrônica e o "Fls." em cima da imagem.
+    # Isso passa de 80 caracteres e escondia o TRCT escaneado.
+    if len((text or "").strip()) >= 400:
         return False
     try:
         return bool(page.get_images(full=False))
     except Exception:
         return False
+
+
+def _tessdata() -> str | None:
+    env = os.environ.get("TESSDATA_PREFIX") or ""
+    if env and Path(env).is_dir():
+        return env if env.endswith(("/", "\\")) else env + "/"
+    for pasta in (
+        "/usr/local/share/tessdata",
+        "/opt/homebrew/share/tessdata",
+        "/usr/share/tesseract-ocr/5/tessdata",
+        "/usr/share/tessdata",
+    ):
+        if Path(pasta, "por.traineddata").exists() or Path(pasta, "eng.traineddata").exists():
+            return pasta + "/"
+    return None
 
 
 def _ocr_page(page: fitz.Page) -> str:
@@ -283,7 +332,11 @@ def _ocr_page(page: fitz.Page) -> str:
     if _OCR_BROKEN:
         return ""
     try:
-        tp = page.get_textpage_ocr(language="por+eng", dpi=140, full=True)
+        kwargs = {"language": "por+eng", "dpi": 140, "full": True}
+        pasta = _tessdata()
+        if pasta:
+            kwargs["tessdata"] = pasta
+        tp = page.get_textpage_ocr(**kwargs)
         return page.get_text(textpage=tp) or ""
     except Exception:
         _OCR_BROKEN = True
@@ -491,7 +544,7 @@ def extract_process(pdf_path: Path, max_chars: int = 550_000) -> dict:
             "ocr_puladas": ocr_puladas,
             "ocr_disponivel": not _OCR_BROKEN,
             "truncado": truncated,
-            "versao": 7,
+            "versao": 8,
         }
         return {"meta": meta, "texto": blob, "paginas": doc.page_count}
     finally:

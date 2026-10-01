@@ -74,6 +74,24 @@ body {
   animation: rise 0.7s ease both;
 }
 
+.brand-logo {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0 0 4px;
+  border-radius: 12px;
+  background: #000;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
 .brand h1 {
   margin: 0;
   font-family: var(--font-display);
@@ -810,7 +828,12 @@ a { color: var(--accent-2); }
   .stage { padding: 20px 16px 40px; }
 }
 
+@media (max-width: 800px) {
+  .prazo-box .contexto-row { grid-template-columns: 1fr 1fr; }
+}
+
 @media (max-width: 560px) {
+  .prazo-box .contexto-row { grid-template-columns: 1fr; }
   .action-grid,
   .action-grid.primary,
   .action-grid.dense {
@@ -824,6 +847,9 @@ a { color: var(--accent-2); }
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 12px;
+}
+.prazo-box .contexto-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 .prazo-box { margin-bottom: 12px; }
 .convidados-lista { margin: 8px 0 12px; padding-left: 18px; }

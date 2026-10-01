@@ -1,4 +1,4 @@
-# Harvey.ai — Roadmap
+# xThemis — Roadmap
 
 Objetivo: melhor assistente jurídico prático do planeta — começando por **trabalhista BR**, com pasta limpa (1 `processo.pdf` + 1 peça por ação) e peça lapidada por diálogo.
 
@@ -25,12 +25,12 @@ Objetivo: melhor assistente jurídico prático do planeta — começando por **t
 | 0.1 | Status de geração em etapas (“lendo PDF… IA… gravando…”) | Acaba a dúvida do “Gerando…” |
 | 0.2 | IA paga roteada (resumo barato / peça cara) | Qualidade forense |
 | 0.3 | Hosting sempre acordado (ou cold-start &lt; 5s) | URL pública confiável |
-| 0.4 | Domínio próprio apontando pro mesmo app | Marca Harvey |
+| 0.4 | Domínio próprio apontando pro mesmo app | Marca xThemis |
 | 0.5 | Checklist pós-peça (tempestividade, pedidos, fls., valores) | Menos peça “bonita e errada” |
 | 0.6 | Diff no refine (antes × depois) | Confiança ao sobrepor |
 | 0.7 | Onboarding 60s + textos da regra de pasta | Zero ambiguidade |
 
-**Saída:** Harvey web + local estáveis; peça trabalhista boa no 1º ciclo de refine.
+**Saída:** xThemis web + local estáveis; peça trabalhista boa no 1º ciclo de refine.
 
 ---
 
@@ -72,7 +72,7 @@ Objetivo: melhor assistente jurídico prático do planeta — começando por **t
 | 2.9 | Testes cegos de qualidade + score | Melhoria contínua |
 | 2.10 | LGPD completo (retenção, exclusão, DPA) | Escala B2B |
 
-**Saída:** marca Harvey = “trabalhista que não inventa e fecha peça”.
+**Saída:** marca xThemis = “trabalhista que não inventa e fecha peça”.
 
 ---
 
@@ -93,7 +93,7 @@ Objetivo: melhor assistente jurídico prático do planeta — começando por **t
 | 3.9 | Mobile-first fórum | Campo |
 | 3.10 | Simulação e analytics de carteira | Gestão |
 
-**Saída:** Harvey como sistema operacional do contencioso — humano decide, agente executa.
+**Saída:** xThemis como sistema operacional do contencioso — humano decide, agente executa.
 
 ---
 
@@ -124,12 +124,15 @@ Objetivo: melhor assistente jurídico prático do planeta — começando por **t
 15. ~~Peça por lado (reclamada, reclamante, juízo) e por área, com roteiro próprio~~ ✅  
 16. ~~Acordo só com verba condenada e paga no extrato; sem valor e sem previsão de resultado~~ ✅  
 17. ~~Número ausente no TST diz qual TRT consultar, sem ementa inventada~~ ✅  
-18. ~~Carnaval e Corpus Christi listados no prazo, sem serem descontados~~ ✅  
+18. ~~Carnaval e Corpus Christi listados no prazo quando a portaria do ano não os suspende~~ ✅  
 19. ~~Exclusão do processo registrada fora da pasta~~ ✅  
+20. ~~Ementa de acórdão do TRT lida na pesquisa nacional da Justiça do Trabalho, só quando a resposta traz o texto~~ ✅  
+21. ~~Calendário de 2026 do TRT-2 (Portaria GP nº 50/2025): suspensões da 2ª Região, de Cotia e de São Paulo sede~~ ✅  
+22. ~~Releitura do PDF do Center Fertin com Tesseract nas páginas-imagem perto de TRCT, holerite, laudo e comprovante~~ ✅  
 
 Fora do código (precisa de conta paga): domínio próprio, Render sem dormir, planos com cobrança, WhatsApp Business API, backup no Google Drive, app de loja.
 
-Próximo: publicar esta leva. Servidor sem dormir, domínio e cobrança seguem dependendo de conta paga.
+Próximo: publicar esta leva, se for o caso. Servidor sem dormir, domínio e cobrança seguem dependendo de conta paga.
 
 ---
 
@@ -153,4 +156,4 @@ Próximo: publicar esta leva. Servidor sem dormir, domínio e cobrança seguem d
 
 ---
 
-*Documento vivo — atualizar a cada release. Produto: Harvey.ai · Instância teste: https://3n20.com.br/harvey/*
+*Documento vivo — atualizar a cada release. Produto: xThemis · Instância teste: https://3n20.com.br/harvey/*

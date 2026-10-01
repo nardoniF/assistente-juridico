@@ -144,7 +144,7 @@ async function refreshConfig() {
   document.getElementById("pasta-info").textContent =
     pasta + " · aprendizado: " + (configCache.aprendizado_global || "");
   document.getElementById("pasta-mini").textContent = configCache.has_key
-    ? "Harvey · IA pronta · " + (configCache.provider_label || configCache.provider || "")
+    ? "xThemis · IA pronta · " + (configCache.provider_label || configCache.provider || "")
     : "Configure a IA em Ajustes (Gemini Pro recomendado)";
   document.getElementById("custo-info").textContent = configCache.custo_estimado || "";
   document.getElementById("escritorio").value = configCache.escritorio || "";
@@ -272,7 +272,7 @@ function warnFolhas(texto, meta) {
   }
   const list = [...nums].sort((a, b) => a - b).slice(0, 12).join(", ");
   el.hidden = false;
-  el.textContent = `Folhas citadas fora do processo (${total} págs.): ${list}. Peça para o Harvey corrigir.`;
+  el.textContent = `Folhas citadas fora do processo (${total} págs.): ${list}. Peça para o xThemis corrigir.`;
 }
 
 function selectCase(c) {
@@ -602,23 +602,29 @@ function renderJuris(conferidas, avisos, acordaos, ausentes) {
   (acordaos || []).forEach((item) => {
     const card = document.createElement("article");
     card.className = "juris-card";
-    const mais = item.total > 1 ? ` · ${item.total} decisões deste número no TST` : "";
+    const trt = item.origem === "TRT";
+    const onde = trt ? "na pesquisa da Justiça do Trabalho" : "na pesquisa do TST";
+    const mais = item.total > 1 ? ` · ${item.total} decisões deste número` : "";
+    const link = trt ? "Abrir na pesquisa da Justiça do Trabalho" : "Abrir na pesquisa do TST";
     card.innerHTML =
-      `<p class="micro">Ementa lida na pesquisa do TST${mais}</p>` +
+      `<p class="micro">Ementa lida ${onde}${mais}</p>` +
       `<h4>${escapeHtml(item.rotulo || item.numero)}</h4>` +
       `<p class="micro">${escapeHtml(item.turma || "")}${item.relator ? " · " + escapeHtml(item.relator) : ""}${item.julgamento ? " · julgamento " + escapeHtml(item.julgamento) : ""}</p>` +
       `<p>${escapeHtml(item.ementa || "")}</p>` +
-      `<p class="micro"><a href="${item.fonte}" target="_blank" rel="noopener">Abrir na pesquisa do TST</a></p>`;
+      `<p class="micro"><a href="${item.fonte}" target="_blank" rel="noopener">${link}</a></p>`;
     box.appendChild(card);
   });
   (ausentes || []).forEach((item) => {
     const card = document.createElement("article");
     card.className = "juris-card ausente";
+    const link = item.busca === "jt"
+      ? "Abrir a busca deste número na Justiça do Trabalho"
+      : "Abrir a busca deste número no TST";
     card.innerHTML =
       `<p class="micro">Sem ementa lida</p>` +
       `<h4>${escapeHtml(item.numero)}</h4>` +
       `<p>${escapeHtml(item.motivo || "")}</p>` +
-      `<p class="micro"><a href="${item.fonte}" target="_blank" rel="noopener">Abrir a busca deste número no TST</a></p>`;
+      `<p class="micro"><a href="${item.fonte}" target="_blank" rel="noopener">${link}</a></p>`;
     box.appendChild(card);
   });
 }
@@ -630,7 +636,7 @@ document.getElementById("btn-conferir-sumulas").onclick = async () => {
     return;
   }
   chatWrap.hidden = false;
-  setBusy(true, "Lendo a pesquisa do TST…");
+  setBusy(true, "Lendo a pesquisa do TST e do TRT…");
   const fd = new FormData();
   fd.append("texto", texto);
   try {
@@ -834,7 +840,7 @@ document.getElementById("btn-refinar").onclick = async () => {
   if (!selected) return;
   const feedback = document.getElementById("instrucoes-extra").value.trim();
   if (!feedback) {
-    toast("Escreva o que faltou; o Harvey reescreve a mesma peça.");
+    toast("Escreva o que faltou; o xThemis reescreve a mesma peça.");
     return;
   }
   const antes = lastResult?.texto || "";
@@ -1062,6 +1068,7 @@ document.getElementById("btn-prazo").onclick = async () => {
   fd.append("modo", document.getElementById("prazo-modo").value);
   fd.append("tipo", document.getElementById("prazo-tipo").value);
   fd.append("dias", document.getElementById("prazo-dias").value);
+  fd.append("comarca", document.getElementById("prazo-comarca").value);
   const r = await fetch(apiUrl("/api/prazo"), { method: "POST", body: fd });
   const data = await r.json();
   const out = document.getElementById("prazo-resultado");
@@ -1155,7 +1162,7 @@ document.getElementById("pdf-juntar").addEventListener("change", async (ev) => {
 document.getElementById("btn-whatsapp").onclick = () => {
   const titulo = casoTitulo.textContent || "Processo";
   const trecho = (lastResult && lastResult.texto ? lastResult.texto : "").slice(0, 700);
-  const msg = `Harvey.ai · ${titulo}\n${trecho}`;
+  const msg = `xThemis · ${titulo}\n${trecho}`;
   window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank", "noopener");
 };
 
@@ -1199,15 +1206,15 @@ document.getElementById("btn-tema").onclick = () => {
 const I18N = {
   pt: {
     sub: "Processos em PDF → peças em Word e PDF",
-    disc: "Harvey.ai é assistente de redação. Não é advogado, não protocola e não garante prazo, jurisprudência nem resultado.",
+    disc: "xThemis é assistente de redação. Não é advogado, não protocola e não garante prazo, jurisprudência nem resultado.",
   },
   en: {
     sub: "Case PDF → Word and PDF drafts",
-    disc: "Harvey.ai drafts text. It is not a lawyer, does not file, and does not guarantee deadlines, case law, or outcome.",
+    disc: "xThemis drafts text. It is not a lawyer, does not file, and does not guarantee deadlines, case law, or outcome.",
   },
   es: {
     sub: "PDF del proceso → borradores en Word y PDF",
-    disc: "Harvey.ai redacta. No es abogado, no protocoliza y no garantiza plazo, jurisprudencia ni resultado.",
+    disc: "xThemis redacta. No es abogado, no protocoliza y no garantiza plazo, jurisprudencia ni resultado.",
   },
 };
 

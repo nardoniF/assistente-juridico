@@ -271,6 +271,103 @@ Use valores e pedidos apenas se constarem do extrato; demais campos deixe entre 
 """
 
 
+def prompt_tutela(meta: dict, texto: str) -> str:
+    return f"""Redija pedido de TUTELA DE URGÊNCIA pelo lado escolhido no roteiro.
+
+Requisitos do art. 300 do CPC, usados no processo do trabalho: probabilidade do direito e perigo de dano ou risco ao resultado útil. Só descreva fato que esteja nos autos. Se o perigo ou o direito não constar do extrato, escreva "NÃO CONSTA DO EXTRATO LIDO" nesse ponto e não invente liminar já deferida.
+
+Capa:
+{meta}
+
+Autos:
+{texto}
+"""
+
+
+def prompt_execucao(meta: dict, texto: str) -> str:
+    return f"""Redija petição de EXECUÇÃO / CUMPRIMENTO DE SENTENÇA pelo lado escolhido no roteiro.
+
+Use só o título que estiver no extrato (sentença, acordo ou cálculos). Não invente valor, rubrica nem conta. O que não estiver nos autos fica como [PREENCHER] e com a frase "NÃO CONSTA DO EXTRATO LIDO".
+
+Capa:
+{meta}
+
+Autos:
+{texto}
+
+{AUDITORIA_BLOCK}
+"""
+
+
+def prompt_embargos_execucao(meta: dict, texto: str) -> str:
+    return f"""Redija EMBARGOS À EXECUÇÃO pelo lado escolhido no roteiro, no prazo do art. 884 da CLT.
+
+Impugne excesso de execução só com comprovante, sentença ou cálculo que esteja no extrato. Peça dedução do que já foi pago. Não invente garantia do juízo nem penhora.
+
+Capa:
+{meta}
+
+Autos:
+{texto}
+
+{AUDITORIA_BLOCK}
+"""
+
+
+def prompt_agravo_peticao(meta: dict, texto: str) -> str:
+    return f"""Redija AGRAVO DE PETIÇÃO (art. 897, "a", da CLT) pelo lado escolhido no roteiro, contra decisão na execução.
+
+Delimite a matéria e as alterações pedidas. Não reabra o que a sentença de conhecimento já julgou, salvo se o extrato mostrar que isso ainda está em discussão. Se a decisão agravada não estiver no extrato, escreva "NÃO CONSTA DO EXTRATO LIDO" e não invente o teor.
+
+Capa:
+{meta}
+
+Autos:
+{texto}
+
+{AUDITORIA_BLOCK}
+"""
+
+
+def prompt_agravo_instrumento(meta: dict, texto: str) -> str:
+    return f"""Redija AGRAVO DE INSTRUMENTO pelo lado escolhido no roteiro.
+
+Se a área for trabalhista, é o agravo do art. 897, "b", da CLT: decisão que nega seguimento a recurso. Não use o rol do art. 1.015 do CPC quando os autos forem de reclamação trabalhista. Se a decisão que trancou o recurso não estiver no extrato, escreva "NÃO CONSTA DO EXTRATO LIDO" e não invente o despacho.
+
+Capa:
+{meta}
+
+Autos:
+{texto}
+"""
+
+
+def prompt_revista(meta: dict, texto: str) -> str:
+    return f"""Redija RECURSO DE REVISTA (art. 896 da CLT) pelo lado escolhido no roteiro.
+
+Só cabe se houver acórdão de Tribunal Regional no extrato. Se não houver, diga isso logo no início e não escreva a revista como se o acórdão existisse. Não invente súmula, precedente nem transcrição. Súmula só com o enunciado da biblioteca anexada.
+
+Capa:
+{meta}
+
+Autos:
+{texto}
+"""
+
+
+def prompt_quesitos(meta: dict, texto: str) -> str:
+    return f"""Redija QUESITOS ao perito pelo lado escolhido no roteiro.
+
+Lista objetiva, numerada, só sobre ponto que já esteja nos autos (função, local, agente, documento, laudo). Não invente medição, EPI nem conclusão técnica. Onde faltar o fato, escreva "NÃO CONSTA DO EXTRATO LIDO".
+
+Capa:
+{meta}
+
+Autos:
+{texto}
+"""
+
+
 def prompt_peticao(meta: dict, texto: str) -> str:
     return f"""Redija PETIÇÃO INTERMEDIÁRIA pela RECLAMADA (juntada, manifestação, requerimento de prova, etc.) conforme o estágio do processo nos autos.
 

@@ -209,7 +209,7 @@ def conferir(texto: str) -> dict:
         item = SUMULAS.get(n)
         if not item:
             avisos.append(
-                f"Súmula {n} não está na biblioteca Harvey. Confira o enunciado no Livro do TST antes de protocolar."
+                f"Súmula {n} não está na biblioteca do xThemis. Confira o enunciado no Livro do TST antes de protocolar."
             )
             continue
         conferidas.append(

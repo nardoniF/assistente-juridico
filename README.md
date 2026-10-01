@@ -1,4 +1,4 @@
-# Harvey.ai
+# xThemis
 
 Produto da **3n20** — analisa processos em PDF e gera peças (Word + PDF) com IA.
 

@@ -292,10 +292,10 @@ def publicar_pdf_pje(case_dir: Path, info: dict, numero: str) -> str:
     advogada = (cfg.get("advogada") or "").strip()
     oab = (cfg.get("oab") or "").strip()
     escritorio = (cfg.get("escritorio") or "").strip()
-    meta["author"] = advogada or "Harvey.ai"
-    meta["creator"] = " ".join(p for p in (advogada, oab, escritorio, "Harvey.ai") if p)
-    meta["producer"] = "Harvey.ai"
-    meta["keywords"] = f"OAB {oab}" if oab else "Harvey.ai"
+    meta["author"] = advogada or "xThemis"
+    meta["creator"] = " ".join(p for p in (advogada, oab, escritorio, "xThemis") if p)
+    meta["producer"] = "xThemis"
+    meta["keywords"] = f"OAB {oab}" if oab else "xThemis"
     doc.set_metadata(meta)
     doc.saveIncr()
     doc.close()
