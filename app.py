@@ -160,14 +160,11 @@ def get_config():
     cfg = organizer.load_config()
     key = cfg.get("api_key") or cfg.get("openai_api_key") or ""
     masked = ("••••" + key[-4:]) if len(key) >= 4 else ""
-    env_locked = bool(
-        (os.environ.get("API_KEY") or os.environ.get("GROQ_API_KEY") or "").strip()
-    )
     return {
         "product": PRODUCT,
         "has_key": bool(key.strip()),
         "masked_key": masked,
-        "key_from_env": env_locked,
+        "key_from_env": bool(cfg.get("key_from_env")),
         "provider": cfg.get("provider") or DEFAULT_CONFIG["provider"],
         "provider_label": cfg.get("provider_label") or DEFAULT_CONFIG["provider_label"],
         "model": cfg.get("model") or cfg.get("openai_model") or DEFAULT_CONFIG["model"],
@@ -188,9 +185,6 @@ def get_config():
 
 @app.post("/api/config")
 def set_config(payload: dict):
-    if (os.environ.get("API_KEY") or os.environ.get("GROQ_API_KEY") or "").strip():
-        # Em produção a chave fica no servidor; UI pode mudar só modelo/preset
-        payload = {k: v for k, v in payload.items() if k != "api_key"}
     allowed = {}
     if "api_key" in payload:
         allowed["api_key"] = (payload.get("api_key") or "").strip()

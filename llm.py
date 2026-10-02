@@ -37,13 +37,21 @@ def configured() -> bool:
 def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
     cfg = _cfg()
     key = cfg["api_key"]
-    if not key:
-        raise LlmError(
-            "Falta a chave da IA. Abra Ajustes, escolha Groq (gratuito), "
-            "cole a chave de console.groq.com/keys e salve."
-        )
     model = cfg["model"]
     base = cfg["base_url"]
+    if not key:
+        raise LlmError(
+            "Falta a chave da IA paga. Abra Ajustes, escolha OpenAI ou Gemini "
+            "e cole a chave (sk-... ou AIza...)."
+        )
+    if "api.openai.com" in base and not key.startswith("sk-"):
+        raise LlmError(
+            "Para o GPT, abra Ajustes, escolha OpenAI e cole a chave que começa com sk-."
+        )
+    if "generativelanguage.googleapis.com" in base and not key.startswith("AIza"):
+        raise LlmError(
+            "Para o Gemini, abra Ajustes e cole a chave que começa com AIza."
+        )
     # Groq: contexto menor — corta entrada muito grande para não estourar
     max_chars = 100_000 if "groq.com" in base else 450_000
     if len(user) > max_chars:
@@ -56,6 +64,8 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
             {"role": "user", "content": user},
         ],
     }
+    if model.startswith("openai/gpt-oss"):
+        payload["reasoning_effort"] = "low"
     with httpx.Client(timeout=240.0) as client:
         r = client.post(
             f"{base}/chat/completions",

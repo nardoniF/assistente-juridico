@@ -27,7 +27,7 @@ DEFAULT_CONFIG = {
     "provider": "groq",
     "provider_label": "Groq (gratuito)",
     "api_key": "",
-    "model": "llama-3.3-70b-versatile",
+    "model": "openai/gpt-oss-120b",
     "base_url": "https://api.groq.com/openai/v1",
 }
 
@@ -35,7 +35,7 @@ PRESETS = {
     "groq_free": {
         "provider": "groq",
         "provider_label": "Groq — gratuito (teste / rascunho)",
-        "model": "llama-3.3-70b-versatile",
+        "model": "openai/gpt-oss-120b",
         "base_url": "https://api.groq.com/openai/v1",
         "custo": "Grátis (limites diários)",
         "nota": "Bom pra testar. Para peça séria, use Gemini Pro ou OpenAI.",
@@ -91,49 +91,63 @@ def ensure_dirs() -> None:
         )
 
 
-def load_config() -> dict:
-    ensure_dirs()
-    try:
-        data = json.loads(CONFIG.read_text(encoding="utf-8"))
-    except Exception:
-        data = {}
-    if data.get("openai_api_key") and not data.get("api_key"):
-        data["api_key"] = data["openai_api_key"]
-    if data.get("openai_model") and not data.get("model"):
-        data["model"] = data["openai_model"]
-
-    # Env vence arquivo (deploy web)
-    env_key = (
+def _env_key() -> str:
+    return (
         os.environ.get("API_KEY")
         or os.environ.get("GROQ_API_KEY")
         or os.environ.get("OPENAI_API_KEY")
         or ""
     ).strip()
-    if env_key:
+
+
+def _read_config_file() -> dict:
+    try:
+        data = json.loads(CONFIG.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def load_config() -> dict:
+    ensure_dirs()
+    data = _read_config_file()
+    if data.get("openai_api_key") and not data.get("api_key"):
+        data["api_key"] = data["openai_api_key"]
+    if data.get("openai_model") and not data.get("model"):
+        data["model"] = data["openai_model"]
+    if data.get("model") in ("llama-3.3-70b-versatile", "llama-3.1-8b-instant"):
+        data["model"] = DEFAULT_CONFIG["model"]
+
+    saved_key = (data.get("api_key") or "").strip()
+    provider = (data.get("provider") or DEFAULT_CONFIG["provider"]).strip()
+    env_key = _env_key()
+    # Groq de teste usa a chave do servidor. OpenAI/Gemini usam a chave colada em Ajustes.
+    data["key_from_env"] = False
+    if provider == "groq" and env_key:
         data["api_key"] = env_key
-    if os.environ.get("API_MODEL"):
+        data["key_from_env"] = True
+    elif saved_key:
+        data["api_key"] = saved_key
+    if os.environ.get("API_MODEL") and provider == "groq" and not saved_key:
         data["model"] = os.environ["API_MODEL"].strip()
-    if os.environ.get("API_BASE_URL"):
+    if os.environ.get("API_BASE_URL") and provider == "groq" and not saved_key:
         data["base_url"] = os.environ["API_BASE_URL"].rstrip("/")
-    if os.environ.get("API_PROVIDER"):
-        data["provider"] = os.environ["API_PROVIDER"].strip()
     return data
 
 
 def save_config(data: dict) -> None:
     ensure_dirs()
-    current = load_config()
-    # Não sobrescrever chave só-de-env no arquivo com vazio
-    current.update(data)
+    current = _read_config_file()
+    incoming = dict(data)
+    incoming.pop("key_from_env", None)
+    current.update(incoming)
     current.pop("openai_api_key", None)
     current.pop("openai_model", None)
     current.pop("openai_base_url", None)
-    # Se a chave veio só do ambiente, não gravar no disco em web
-    if web_mode() and (os.environ.get("API_KEY") or os.environ.get("GROQ_API_KEY")):
-        file_data = {k: v for k, v in current.items() if k != "api_key"}
-        file_data["api_key"] = ""
-        CONFIG.write_text(json.dumps(file_data, indent=2, ensure_ascii=False), encoding="utf-8")
-        return
+    current.pop("key_from_env", None)
+    env_key = _env_key()
+    if (current.get("api_key") or "").strip() == env_key:
+        current["api_key"] = ""
     CONFIG.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
