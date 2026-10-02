@@ -150,15 +150,15 @@ async function refreshConfig() {
   document.getElementById("escritorio").value = configCache.escritorio || "";
   document.getElementById("advogada").value = configCache.advogada || "";
   document.getElementById("oab").value = configCache.oab || "";
-  document.getElementById("api-key").placeholder = configCache.has_key
-    ? configCache.masked_key
-    : "AIza... / sk-... / gsk_...";
-  document.getElementById("api-key").disabled = !!configCache.key_from_env;
-  if (configCache.key_from_env) {
-    document.getElementById("api-key").placeholder = configCache.masked_key + " (servidor)";
-  }
+  const campoChave = document.getElementById("api-key");
+  campoChave.disabled = false;
+  campoChave.placeholder = configCache.key_from_env
+    ? "Cole a chave paga (sk-... ou AIza...). O teste grátis continua no servidor."
+    : configCache.has_key
+      ? configCache.masked_key
+      : "AIza... / sk-... / gsk_...";
   const preset = document.getElementById("preset");
-  if (configCache.model === "llama-3.3-70b-versatile" || configCache.provider === "groq")
+  if (configCache.model === "openai/gpt-oss-120b" || configCache.provider === "groq")
     preset.value = "groq_free";
   else if (configCache.model === "gemini-2.5-pro") preset.value = "google_pro";
   else if (configCache.model === "gemini-2.5-flash-lite") preset.value = "google_lite";
