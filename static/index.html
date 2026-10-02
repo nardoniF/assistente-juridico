@@ -77,6 +77,15 @@
       </header>
 
       <section class="panel actions" id="comando">
+        <div class="posicao-row">
+          <label>Posição
+            <select id="persona">
+              <option value="reclamada">Reclamada</option>
+              <option value="reclamante">Reclamante</option>
+              <option value="juizo">Juízo</option>
+            </select>
+          </label>
+        </div>
         <div class="panel-head">
           <h3>Gerar peça</h3>
           <button type="button" id="btn-como" class="icon-info" aria-expanded="false" aria-controls="empty-state" title="Como funciona">i</button>
@@ -143,15 +152,6 @@
             <label class="switch">
               <input type="checkbox" id="salvar-aprendizado" checked />
               <span>Guardar aprendizado</span>
-            </label>
-          </div>
-          <div class="contexto-row">
-            <label>Posição
-              <select id="persona">
-                <option value="reclamada">Reclamada</option>
-                <option value="reclamante">Reclamante</option>
-                <option value="juizo">Juízo</option>
-              </select>
             </label>
           </div>
           <div class="prazo-box">
