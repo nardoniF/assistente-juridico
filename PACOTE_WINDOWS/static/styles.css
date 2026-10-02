@@ -143,6 +143,7 @@ body {
   height: 28px;
   margin-bottom: 4px;
   border-radius: 8px;
+  overflow: hidden;
   background:
     linear-gradient(135deg, var(--accent), transparent 60%),
     linear-gradient(225deg, var(--accent-2), transparent 55%);
