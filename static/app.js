@@ -813,7 +813,6 @@ document.querySelectorAll("#acoes-wrap button[data-tipo]").forEach((btn) => {
     fd.append("salvar_aprendizado", learnFlag());
     if (instrucoes) fd.append("instrucoes_extra", instrucoes);
     fd.append("persona", document.getElementById("persona").value);
-    fd.append("area", document.getElementById("area").value);
     fd.append("prazo", document.getElementById("prazo").value.trim());
     try {
       const r = await fetch(apiUrl("/api/acao"), { method: "POST", body: fd });

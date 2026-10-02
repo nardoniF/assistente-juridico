@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -614,6 +615,29 @@ async def juntar_paginas(case_id: str = Form(...), arquivo: UploadFile = File(..
             merged.unlink()
 
 
+def area_do_processo(meta: dict, texto: str) -> str:
+    """Ramo da justiça pelo número CNJ e pelo texto do PDF. Sem escolha manual."""
+    blob = " ".join(
+        [
+            str(meta.get("numero") or ""),
+            str(meta.get("titulo") or ""),
+            (texto or "")[:15000],
+        ]
+    )
+    m = re.search(r"\d{7}-\d{2}\.\d{4}\.(\d)\.\d{2}\.\d{4}", blob)
+    ramo = m.group(1) if m else ""
+    u = blob.upper()
+    if ramo == "5" or "VARA DO TRABALHO" in u or "RECLAMAÇÃO TRABALHISTA" in u or "RECLAMACAO TRABALHISTA" in u:
+        return "trabalhista"
+    if "VARA DE FAMÍLIA" in u or "VARA DE FAMILIA" in u or "VARA DA FAMÍLIA" in u or "VARA DA FAMILIA" in u:
+        return "familia"
+    if "PREVIDENCI" in u or " INSS" in u:
+        return "previdenciario"
+    if ramo in ("4", "8"):
+        return "civel"
+    return "trabalhista"
+
+
 def _build_user_prompt(
     case: Path,
     tipo: str,
@@ -740,7 +764,6 @@ def acao(
     instrucoes_extra: str = Form(""),
     salvar_aprendizado: str = Form("1"),
     persona: str = Form(""),
-    area: str = Form("trabalhista"),
     prazo: str = Form(""),
 ):
     try:
@@ -762,7 +785,7 @@ def acao(
     texto = data.get("texto") or ""
     titulo, _, base_name = ACTION_MAP[tipo]
     user_prompt = _build_user_prompt(
-        case, tipo, meta, texto, "" if learn else extra, persona, area, prazo
+        case, tipo, meta, texto, "" if learn else extra, persona, area_do_processo(meta, texto), prazo
     )
     learned = memory.combined_instructions(case, tipo, "" if learn else extra)
 
