@@ -912,24 +912,16 @@ a { color: var(--accent-2); }
 .contexto-row label { font-size: 12px; color: var(--muted); }
 .contexto-row select, .contexto-row input { width: 100%; margin-top: 4px; }
 .rail-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 4px 0 12px; }
-.lang-switch {
+.lang-go {
   display: inline-flex;
+  align-items: center;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
-  overflow: hidden;
-}
-.lang-switch button {
-  border: 0;
-  background: transparent;
-  color: var(--muted);
+  color: var(--ink);
+  text-decoration: none;
   font: 700 12px var(--font-ui);
-  letter-spacing: 0.04em;
-  padding: 6px 10px;
-  cursor: pointer;
-}
-.lang-switch button.on {
-  background: var(--accent);
-  color: var(--accent-ink);
+  letter-spacing: 0.02em;
+  padding: 6px 12px;
 }
 .camadas-texto { white-space: pre-wrap; max-height: 220px; overflow: auto; font-size: 12px; line-height: 1.45; }
 .disclaimer { margin: 0; padding: 8px 18px 16px; font-size: 12px; color: var(--muted); }

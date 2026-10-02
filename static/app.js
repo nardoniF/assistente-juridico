@@ -1364,17 +1364,10 @@ function langDoDominio() {
 
 let langAtual = "pt";
 
-function marcarIdioma(lang) {
-  document.querySelectorAll(".lang-switch [data-lang]").forEach((btn) => {
-    const on = btn.dataset.lang === lang;
-    btn.classList.toggle("on", on);
-    btn.setAttribute("aria-pressed", on ? "true" : "false");
-  });
-}
-
 function aplicarIdioma(lang) {
   const pack = I18N[lang] || I18N.pt;
   langAtual = lang;
+  document.documentElement.dataset.lang = lang;
   document.getElementById("brand-sub").textContent = pack.sub;
   document.getElementById("disclaimer").textContent = pack.disc;
   document.documentElement.lang = lang === "pt" ? "pt-BR" : lang;
@@ -1387,34 +1380,22 @@ function aplicarIdioma(lang) {
       el.textContent = texto;
     });
   });
+  document.querySelectorAll("[data-en]").forEach((el) => {
+    if (!el.dataset.pt) el.dataset.pt = el.textContent;
+    el.textContent = lang === "en" ? el.dataset.en : el.dataset.pt;
+  });
   const persona = document.getElementById("persona");
   if (persona && pack.lados) {
     [...persona.options].forEach((opt) => {
       if (pack.lados[opt.value]) opt.textContent = pack.lados[opt.value];
     });
   }
-  marcarIdioma(lang);
-}
-
-function escolherIdioma(lang) {
-  const doDominio = langDoDominio();
-  if (doDominio) {
-    localStorage.removeItem("harvey_lang");
-    const destino = lang === "en" ? "https://www.xthemis.com/" : "https://www.xthemis.com.br/";
-    const hostDestino = lang === "en" ? "xthemis.com" : "xthemis.com.br";
-    if (hostAtual() !== hostDestino) {
-      location.href = destino + location.search + location.hash;
-      return;
-    }
-  } else {
-    localStorage.setItem("harvey_lang", lang);
+  const ir = document.getElementById("lang-go");
+  if (ir && langDoDominio()) {
+    ir.textContent = lang === "en" ? "Português" : "English";
+    ir.href = lang === "en" ? "https://www.xthemis.com.br/" : "https://www.xthemis.com/";
   }
-  aplicarIdioma(lang);
 }
-
-document.querySelectorAll(".lang-switch [data-lang]").forEach((btn) => {
-  btn.onclick = () => escolherIdioma(btn.dataset.lang);
-});
 
 document.getElementById("btn-conta").onclick = () => document.getElementById("login").showModal();
 document.getElementById("login-fechar").onclick = () => document.getElementById("login").close();
@@ -1481,7 +1462,7 @@ document.getElementById("onb-pular").onclick = () => {
 const tema = localStorage.getItem("harvey_theme") || "dark";
 document.documentElement.dataset.theme = tema;
 if (langDoDominio()) localStorage.removeItem("harvey_lang");
-aplicarIdioma(langDoDominio() || localStorage.getItem("harvey_lang") || "pt");
+aplicarIdioma(document.documentElement.dataset.lang || langDoDominio() || localStorage.getItem("harvey_lang") || "pt");
 if (!localStorage.getItem("harvey_onboard")) {
   pintarOnb();
   document.getElementById("onboarding").showModal();

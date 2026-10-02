@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=5" />
 </head>
 <body>
   <div class="ambiance" aria-hidden="true"></div>
@@ -24,10 +24,24 @@
       </div>
       <div class="rail-tools">
         <button type="button" id="btn-tema" class="ghost">Modo claro</button>
-        <div class="lang-switch" role="group" aria-label="Idioma">
-          <button type="button" data-lang="pt">PT</button>
-          <button type="button" data-lang="en">EN</button>
-        </div>
+        <a class="lang-go" id="lang-go" href="https://www.xthemis.com/">English</a>
+        <script>
+          (function () {
+            var host = (location.hostname || "").toLowerCase().replace(/^www\./, "");
+            var a = document.getElementById("lang-go");
+            if (host === "xthemis.com") {
+              document.documentElement.lang = "en";
+              document.documentElement.dataset.lang = "en";
+              a.textContent = "Português";
+              a.href = "https://www.xthemis.com.br/";
+            } else if (host === "xthemis.com.br") {
+              document.documentElement.lang = "pt-BR";
+              document.documentElement.dataset.lang = "pt";
+              a.textContent = "English";
+              a.href = "https://www.xthemis.com/";
+            }
+          })();
+        </script>
         <button type="button" id="btn-conta" class="ghost">Entrar</button>
       </div>
 
@@ -101,14 +115,14 @@
         </section>
           <div class="action-groups">
             <div>
-              <p class="group-label">Análise</p>
+              <p class="group-label" data-en="Analysis">Análise</p>
               <div class="action-grid">
                 <button data-tipo="resumo" data-modo="chat">Resumo</button>
                 <button data-tipo="jurisprudencia" data-modo="chat">Jurisprudência</button>
               </div>
             </div>
             <div>
-              <p class="group-label">Peças principais</p>
+              <p class="group-label" data-en="Main filings">Peças principais</p>
               <div class="action-grid primary">
                 <button data-tipo="defesa" data-modo="arquivos" class="direct">Contestação</button>
                 <button data-tipo="replica" data-modo="arquivos" class="direct">Réplica</button>
@@ -117,7 +131,7 @@
               </div>
             </div>
             <div>
-              <p class="group-label">Outras fases</p>
+              <p class="group-label" data-en="Other stages">Outras fases</p>
               <div class="action-grid dense">
                 <button data-tipo="alegacoes_finais" data-modo="arquivos" class="direct">Alegações finais</button>
                 <button data-tipo="embargos" data-modo="arquivos" class="direct">Embargos</button>
@@ -130,7 +144,7 @@
               </div>
             </div>
             <div>
-              <p class="group-label">Execução e recursos</p>
+              <p class="group-label" data-en="Enforcement and appeals">Execução e recursos</p>
               <div class="action-grid dense">
                 <button data-tipo="tutela" data-modo="arquivos" class="direct">Tutela de urgência</button>
                 <button data-tipo="execucao" data-modo="arquivos" class="direct">Execução</button>
@@ -407,6 +421,6 @@
   </dialog>
 
   <script src="config.js"></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>
