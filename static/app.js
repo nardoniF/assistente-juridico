@@ -1211,7 +1211,7 @@ document.getElementById("btn-tema").onclick = () => {
   const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
   document.documentElement.dataset.theme = next;
   localStorage.setItem("harvey_theme", next);
-  aplicarIdioma(document.getElementById("idioma").value, false);
+  aplicarIdioma(langAtual, false);
 };
 
 const I18N = {
@@ -1220,12 +1220,71 @@ const I18N = {
     disc: "xThemis é assistente de redação. Não é advogado, não protocola e não garante prazo, jurisprudência nem resultado.",
     temaClaro: "Modo claro",
     temaEscuro: "Modo escuro",
+    lados: { reclamada: "Reclamada", reclamante: "Reclamante", juizo: "Juízo" },
+    ui: {
+      "#btn-conta": "Entrar",
+      "#btn-ajustes": "Ajustes da IA",
+      "#dropzone strong": "Anexar PDF do processo",
+      "#dropzone span": "Copia pra pasta do caso · vira o único processo.pdf",
+      ".rail-head h2": "Processos",
+      "#stage-eyebrow": "Selecione ou importe um processo",
+      "#caso-titulo": "Nenhum caso ativo",
+      "#empty-state p": "Anexe o PDF: o xThemis cria a pasta e grava processo.pdf (só um). Cada ação vira um Word e um PDF. Refinar sobrepõe a mesma peça. Quando o tribunal atualizar os autos, use Atualizar processo e o PDF principal é substituído.",
+      "#btn-segredo": "Segredo",
+      "#btn-excluir": "Excluir processo",
+      "#btn-pasta": "Backup (ZIP)",
+      "#btn-ver-prompts": "Prompts",
+      "#empty-state .empty-kicker": "Como funciona",
+      "#empty-state h3": "Um processo. Uma peça por ação.",
+      ".dialogue h3": "Diálogo com a IA",
+      ".dialogue .switch span": "Guardar aprendizado",
+      "#btn-prazo": "Calcular prazo",
+      "#btn-refinar": "Refinar esta peça (sobrepoe)",
+      "#btn-fechar": "Peça fechada",
+      "#btn-conferir-sumulas": "Conferir jurisprudência",
+      "#peca-estado": "Sem peça aberta. A primeira ação cria o arquivo.",
+      "#camadas-wrap h3": "Resumo em camadas",
+      "#indice-wrap h3": "Índice dos autos",
+      "#extrato-wrap h3": "Extrato do processo",
+      "#btn-salvar-extrato": "Salvar extrato",
+      ".actions h3": "Gerar peça",
+      "#chat-titulo": "Resultado",
+      "#btn-salvar": "Regravar Word + PDF",
+      "#ajustes h2": "Ajustes",
+      "#login h2": "Entrar",
+      "#onb-title": "Quem vai usar",
+      "#onb-pular": "Pular",
+      "#onb-next": "Continuar",
+      ".posicao-nome": "Posição",
+      "[data-tipo=resumo]": "Resumo",
+      "[data-tipo=jurisprudencia]": "Jurisprudência",
+      "[data-tipo=defesa]": "Contestação",
+      "[data-tipo=replica]": "Réplica",
+      "[data-tipo=recurso]": "Recurso ordinário",
+      "[data-tipo=contrarrazoes]": "Contrarrazões",
+      "[data-tipo=alegacoes_finais]": "Alegações finais",
+      "[data-tipo=embargos]": "Embargos",
+      "[data-tipo=impugnacao_laudo]": "Impug. laudo",
+      "[data-tipo=impugnacao_calculos]": "Impug. cálculos",
+      "[data-tipo=manifestacao]": "Manifestação",
+      "[data-tipo=peticao]": "Petição",
+      "[data-tipo=acordo]": "Acordo",
+      "[data-tipo=personalizado]": "Pedido personalizado",
+      "[data-tipo=tutela]": "Tutela de urgência",
+      "[data-tipo=execucao]": "Execução",
+      "[data-tipo=embargos_execucao]": "Embargos à execução",
+      "[data-tipo=agravo_peticao]": "Agravo de petição",
+      "[data-tipo=agravo_instrumento]": "Agravo de instrumento",
+      "[data-tipo=revista]": "Recurso de revista",
+      "[data-tipo=quesitos]": "Quesitos",
+    },
   },
   en: {
     sub: "Case PDF → Word and PDF drafts",
     disc: "xThemis drafts text. It is not a lawyer, does not file, and does not guarantee deadlines, case law, or outcome.",
     temaClaro: "Light mode",
     temaEscuro: "Dark mode",
+    lados: { reclamada: "Defendant", reclamante: "Claimant", juizo: "Court" },
     ui: {
       "#btn-conta": "Sign in",
       "#btn-ajustes": "AI settings",
@@ -1260,6 +1319,7 @@ const I18N = {
       "#onb-title": "Who will use it",
       "#onb-pular": "Skip",
       "#onb-next": "Continue",
+      ".posicao-nome": "Side",
       "[data-tipo=resumo]": "Summary",
       "[data-tipo=jurisprudencia]": "Case law",
       "[data-tipo=defesa]": "Defense",
@@ -1291,16 +1351,30 @@ const I18N = {
   },
 };
 
+function hostAtual() {
+  return (location.hostname || "").toLowerCase().replace(/^www\./, "");
+}
+
 function langDoDominio() {
-  const host = (location.hostname || "").toLowerCase().replace(/^www\./, "");
+  const host = hostAtual();
   if (host === "xthemis.com") return "en";
   if (host === "xthemis.com.br") return "pt";
   return null;
 }
 
-function aplicarIdioma(lang, gravar) {
+let langAtual = "pt";
+
+function marcarIdioma(lang) {
+  document.querySelectorAll(".lang-switch [data-lang]").forEach((btn) => {
+    const on = btn.dataset.lang === lang;
+    btn.classList.toggle("on", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+}
+
+function aplicarIdioma(lang) {
   const pack = I18N[lang] || I18N.pt;
-  if (gravar) localStorage.setItem("harvey_lang", lang);
+  langAtual = lang;
   document.getElementById("brand-sub").textContent = pack.sub;
   document.getElementById("disclaimer").textContent = pack.disc;
   document.documentElement.lang = lang === "pt" ? "pt-BR" : lang;
@@ -1313,11 +1387,34 @@ function aplicarIdioma(lang, gravar) {
       el.textContent = texto;
     });
   });
+  const persona = document.getElementById("persona");
+  if (persona && pack.lados) {
+    [...persona.options].forEach((opt) => {
+      if (pack.lados[opt.value]) opt.textContent = pack.lados[opt.value];
+    });
+  }
+  marcarIdioma(lang);
 }
 
-document.getElementById("idioma").onchange = (ev) => {
-  aplicarIdioma(ev.target.value, true);
-};
+function escolherIdioma(lang) {
+  const doDominio = langDoDominio();
+  if (doDominio) {
+    localStorage.removeItem("harvey_lang");
+    const destino = lang === "en" ? "https://www.xthemis.com/" : "https://www.xthemis.com.br/";
+    const hostDestino = lang === "en" ? "xthemis.com" : "xthemis.com.br";
+    if (hostAtual() !== hostDestino) {
+      location.href = destino + location.search + location.hash;
+      return;
+    }
+  } else {
+    localStorage.setItem("harvey_lang", lang);
+  }
+  aplicarIdioma(lang);
+}
+
+document.querySelectorAll(".lang-switch [data-lang]").forEach((btn) => {
+  btn.onclick = () => escolherIdioma(btn.dataset.lang);
+});
 
 document.getElementById("btn-conta").onclick = () => document.getElementById("login").showModal();
 document.getElementById("login-fechar").onclick = () => document.getElementById("login").close();
@@ -1383,9 +1480,8 @@ document.getElementById("onb-pular").onclick = () => {
 
 const tema = localStorage.getItem("harvey_theme") || "dark";
 document.documentElement.dataset.theme = tema;
-const lang = localStorage.getItem("harvey_lang") || langDoDominio() || "pt";
-document.getElementById("idioma").value = lang;
-aplicarIdioma(lang, false);
+if (langDoDominio()) localStorage.removeItem("harvey_lang");
+aplicarIdioma(langDoDominio() || localStorage.getItem("harvey_lang") || "pt");
 if (!localStorage.getItem("harvey_onboard")) {
   pintarOnb();
   document.getElementById("onboarding").showModal();

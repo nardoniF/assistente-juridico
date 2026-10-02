@@ -24,11 +24,10 @@
       </div>
       <div class="rail-tools">
         <button type="button" id="btn-tema" class="ghost">Modo claro</button>
-        <select id="idioma" aria-label="Idioma">
-          <option value="pt">PT</option>
-          <option value="en">EN</option>
-          <option value="es">ES</option>
-        </select>
+        <div class="lang-switch" role="group" aria-label="Idioma">
+          <button type="button" data-lang="pt">PT</button>
+          <button type="button" data-lang="en">EN</button>
+        </div>
         <button type="button" id="btn-conta" class="ghost">Entrar</button>
       </div>
 
@@ -78,7 +77,7 @@
 
       <section class="panel actions" id="comando">
         <div class="posicao-row">
-          <label>Posição
+          <label><span class="posicao-nome">Posição</span>
             <select id="persona">
               <option value="reclamada">Reclamada</option>
               <option value="reclamante">Reclamante</option>
