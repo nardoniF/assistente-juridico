@@ -37,6 +37,8 @@ def configured() -> bool:
 def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
     cfg = _cfg()
     key = cfg["api_key"]
+    model = cfg["model"]
+    base = cfg["base_url"]
     if not key:
         raise LlmError(
             "Falta a chave da IA paga. Abra Ajustes, escolha OpenAI ou Gemini "
@@ -50,8 +52,6 @@ def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
         raise LlmError(
             "Para o Gemini, abra Ajustes e cole a chave que começa com AIza."
         )
-    model = cfg["model"]
-    base = cfg["base_url"]
     # Groq: contexto menor — corta entrada muito grande para não estourar
     max_chars = 100_000 if "groq.com" in base else 450_000
     if len(user) > max_chars:
