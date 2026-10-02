@@ -1043,12 +1043,22 @@ def prazo_calc(
     modo: str = Form("ciencia"),
     tipo: str = Form("recurso"),
     dias: str = Form(""),
-    comarca: str = Form("cotia"),
+    comarca: str = Form(""),
+    case_id: str = Form(""),
 ):
     try:
         n = int(dias) if (dias or "").strip() else None
     except ValueError:
         raise HTTPException(400, "Dias úteis inválidos.")
+    if (case_id or "").strip():
+        try:
+            case = organizer.case_dir(case_id.strip())
+            loaded = _load_or_extract(case, refresh=False)
+            comarca = prazos.comarca_do_processo(loaded.get("meta") or {}, loaded.get("texto") or "")
+        except Exception:
+            comarca = ""
+    if comarca not in prazos.COMARCAS:
+        comarca = "regional"
     try:
         return prazos.calcular(data, modo, tipo, n, comarca)
     except ValueError as e:

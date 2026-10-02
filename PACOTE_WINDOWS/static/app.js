@@ -1067,7 +1067,7 @@ document.getElementById("btn-prazo").onclick = async () => {
   fd.append("modo", document.getElementById("prazo-modo").value);
   fd.append("tipo", document.getElementById("prazo-tipo").value);
   fd.append("dias", document.getElementById("prazo-dias").value);
-  fd.append("comarca", document.getElementById("prazo-comarca").value);
+  if (selected) fd.append("case_id", selected.id);
   const r = await fetch(apiUrl("/api/prazo"), { method: "POST", body: fd });
   const data = await r.json();
   const out = document.getElementById("prazo-resultado");

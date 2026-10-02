@@ -31,6 +31,27 @@ COMARCAS = {
     "saopaulo": "São Paulo (sede)",
 }
 
+
+def comarca_do_processo(meta: dict, texto: str) -> str:
+    """Feriado municipal segue a vara escrita no PDF. Sem vara, vale a 2ª Região inteira."""
+    blob = " ".join(
+        [
+            str((meta or {}).get("numero") or ""),
+            str((meta or {}).get("titulo") or ""),
+            (texto or "")[:8000],
+        ]
+    ).upper()
+    if "COTIA" in blob:
+        return "cotia"
+    if (
+        "VARA DO TRABALHO DE SÃO PAULO" in blob
+        or "VARA DO TRABALHO DE SAO PAULO" in blob
+        or "FORO DE SÃO PAULO" in blob
+        or "FORO DE SAO PAULO" in blob
+    ):
+        return "saopaulo"
+    return "regional"
+
 # Portaria GP nº 50, de 2/10/2025, DEJT TRT-2 n. 4322, p. 2-3.
 # Só os dias de 2026 que suspendem expediente na Segunda Região inteira,
 # além de fim de semana, feriado nacional e recesso já contados à parte.
