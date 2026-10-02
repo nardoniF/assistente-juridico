@@ -305,6 +305,37 @@ body {
   margin-bottom: 12px;
 }
 
+.icon-info {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon-info[aria-expanded="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
+}
+
+.como-pop {
+  max-width: none;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(61, 155, 132, 0.08);
+}
+
+.como-pop h3 { font-size: 1.15rem; }
+
 .dialogue textarea {
   width: 100%;
   min-height: 120px;

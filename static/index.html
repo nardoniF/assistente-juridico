@@ -76,16 +76,65 @@
         </div>
       </header>
 
-      <section class="empty-state" id="empty-state">
-        <p class="empty-kicker">Como funciona</p>
-        <h3>Um processo. Uma peça por ação.</h3>
-        <p>
-          Anexe o PDF: o xThemis cria a pasta e grava <strong>processo.pdf</strong> (só um).
-          Cada ação (recurso, contestação…) vira <strong>um Word + um PDF</strong> com nome fixo.
-          Enquanto você refina (“faltou X”), ele <strong>sobrepoe</strong> a mesma peça — sem v1/v2.
-          Quando o tribunal atualizar os autos, use <strong>Atualizar processo</strong> e o PDF principal é substituído.
-        </p>
-      </section>
+      <section class="panel actions" id="comando">
+        <div class="panel-head">
+          <h3>Gerar peça</h3>
+          <button type="button" id="btn-como" class="icon-info" aria-expanded="false" aria-controls="empty-state" title="Como funciona">i</button>
+        </div>
+        <section class="empty-state como-pop" id="empty-state" hidden>
+          <p class="empty-kicker">Como funciona</p>
+          <h3>Um processo. Uma peça por ação.</h3>
+          <p>
+            Anexe o PDF: o xThemis cria a pasta e grava <strong>processo.pdf</strong> (só um).
+            Cada ação (recurso, contestação…) vira <strong>um Word + um PDF</strong> com nome fixo.
+            Enquanto você refina (“faltou X”), ele <strong>sobrepoe</strong> a mesma peça — sem v1/v2.
+            Quando o tribunal atualizar os autos, use <strong>Atualizar processo</strong> e o PDF principal é substituído.
+          </p>
+        </section>
+          <div class="action-groups">
+            <div>
+              <p class="group-label">Análise</p>
+              <div class="action-grid">
+                <button data-tipo="resumo" data-modo="chat">Resumo</button>
+                <button data-tipo="jurisprudencia" data-modo="chat">Jurisprudência</button>
+              </div>
+            </div>
+            <div>
+              <p class="group-label">Peças principais</p>
+              <div class="action-grid primary">
+                <button data-tipo="defesa" data-modo="arquivos" class="direct">Contestação</button>
+                <button data-tipo="replica" data-modo="arquivos" class="direct">Réplica</button>
+                <button data-tipo="recurso" data-modo="arquivos" class="direct">Recurso ordinário</button>
+                <button data-tipo="contrarrazoes" data-modo="arquivos" class="direct">Contrarrazões</button>
+              </div>
+            </div>
+            <div>
+              <p class="group-label">Outras fases</p>
+              <div class="action-grid dense">
+                <button data-tipo="alegacoes_finais" data-modo="arquivos" class="direct">Alegações finais</button>
+                <button data-tipo="embargos" data-modo="arquivos" class="direct">Embargos</button>
+                <button data-tipo="impugnacao_laudo" data-modo="arquivos" class="direct">Impug. laudo</button>
+                <button data-tipo="impugnacao_calculos" data-modo="arquivos" class="direct">Impug. cálculos</button>
+                <button data-tipo="manifestacao" data-modo="arquivos" class="direct">Manifestação</button>
+                <button data-tipo="peticao" data-modo="arquivos" class="direct">Petição</button>
+                <button data-tipo="acordo" data-modo="arquivos" class="direct">Acordo</button>
+                <button data-tipo="personalizado" data-modo="arquivos" class="direct wide">Pedido personalizado</button>
+              </div>
+            </div>
+            <div>
+              <p class="group-label">Execução e recursos</p>
+              <div class="action-grid dense">
+                <button data-tipo="tutela" data-modo="arquivos" class="direct">Tutela de urgência</button>
+                <button data-tipo="execucao" data-modo="arquivos" class="direct">Execução</button>
+                <button data-tipo="embargos_execucao" data-modo="arquivos" class="direct">Embargos à execução</button>
+                <button data-tipo="agravo_peticao" data-modo="arquivos" class="direct">Agravo de petição</button>
+                <button data-tipo="agravo_instrumento" data-modo="arquivos" class="direct">Agravo de instrumento</button>
+                <button data-tipo="revista" data-modo="arquivos" class="direct">Recurso de revista</button>
+                <button data-tipo="quesitos" data-modo="arquivos" class="direct">Quesitos</button>
+              </div>
+            </div>
+          </div>
+        </section>
 
       <section class="workspace" id="acoes-wrap" hidden>
         <div class="panel dialogue">
@@ -210,53 +259,6 @@
               </thead>
               <tbody></tbody>
             </table>
-          </div>
-        </div>
-
-        <div class="panel actions">
-          <h3>Gerar peça</h3>
-          <div class="action-groups">
-            <div>
-              <p class="group-label">Análise</p>
-              <div class="action-grid">
-                <button data-tipo="resumo" data-modo="chat">Resumo</button>
-                <button data-tipo="jurisprudencia" data-modo="chat">Jurisprudência</button>
-              </div>
-            </div>
-            <div>
-              <p class="group-label">Peças principais</p>
-              <div class="action-grid primary">
-                <button data-tipo="defesa" data-modo="arquivos" class="direct">Contestação</button>
-                <button data-tipo="replica" data-modo="arquivos" class="direct">Réplica</button>
-                <button data-tipo="recurso" data-modo="arquivos" class="direct">Recurso ordinário</button>
-                <button data-tipo="contrarrazoes" data-modo="arquivos" class="direct">Contrarrazões</button>
-              </div>
-            </div>
-            <div>
-              <p class="group-label">Outras fases</p>
-              <div class="action-grid dense">
-                <button data-tipo="alegacoes_finais" data-modo="arquivos" class="direct">Alegações finais</button>
-                <button data-tipo="embargos" data-modo="arquivos" class="direct">Embargos</button>
-                <button data-tipo="impugnacao_laudo" data-modo="arquivos" class="direct">Impug. laudo</button>
-                <button data-tipo="impugnacao_calculos" data-modo="arquivos" class="direct">Impug. cálculos</button>
-                <button data-tipo="manifestacao" data-modo="arquivos" class="direct">Manifestação</button>
-                <button data-tipo="peticao" data-modo="arquivos" class="direct">Petição</button>
-                <button data-tipo="acordo" data-modo="arquivos" class="direct">Acordo</button>
-                <button data-tipo="personalizado" data-modo="arquivos" class="direct wide">Pedido personalizado</button>
-              </div>
-            </div>
-            <div>
-              <p class="group-label">Execução e recursos</p>
-              <div class="action-grid dense">
-                <button data-tipo="tutela" data-modo="arquivos" class="direct">Tutela de urgência</button>
-                <button data-tipo="execucao" data-modo="arquivos" class="direct">Execução</button>
-                <button data-tipo="embargos_execucao" data-modo="arquivos" class="direct">Embargos à execução</button>
-                <button data-tipo="agravo_peticao" data-modo="arquivos" class="direct">Agravo de petição</button>
-                <button data-tipo="agravo_instrumento" data-modo="arquivos" class="direct">Agravo de instrumento</button>
-                <button data-tipo="revista" data-modo="arquivos" class="direct">Recurso de revista</button>
-                <button data-tipo="quesitos" data-modo="arquivos" class="direct">Quesitos</button>
-              </div>
-            </div>
           </div>
         </div>
 

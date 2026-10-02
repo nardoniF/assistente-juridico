@@ -107,7 +107,7 @@ function setBusy(on, text, stageKey) {
   clearInterval(busyTimer);
   busyTimer = null;
   busy.hidden = !on;
-  document.querySelectorAll("#acoes-wrap button[data-tipo], #btn-refinar").forEach((b) => {
+  document.querySelectorAll("#comando button[data-tipo], #btn-refinar").forEach((b) => {
     b.disabled = on;
   });
   if (!on) {
@@ -306,7 +306,7 @@ function applyLock(estado) {
       box.textContent = "Nenhuma peça aberta. O PDF de protocolo nasce ao marcar Peça fechada.";
     }
   }
-  document.querySelectorAll("#acoes-wrap button[data-tipo]").forEach((btn) => {
+  document.querySelectorAll("#comando button[data-tipo]").forEach((btn) => {
     const tipo = btn.dataset.tipo;
     const info = tipos[tipo];
     btn.disabled = false;
@@ -794,9 +794,20 @@ function learnFlag() {
   return document.getElementById("salvar-aprendizado").checked ? "1" : "0";
 }
 
-document.querySelectorAll("#acoes-wrap button[data-tipo]").forEach((btn) => {
+document.getElementById("btn-como").onclick = () => {
+  const pop = document.getElementById("empty-state");
+  const show = pop.hidden;
+  pop.hidden = !show;
+  document.getElementById("btn-como").setAttribute("aria-expanded", show ? "true" : "false");
+};
+
+document.querySelectorAll("#comando button[data-tipo]").forEach((btn) => {
   btn.addEventListener("click", async () => {
-    if (!selected) return;
+    if (!selected) {
+      toast("Anexe o PDF do processo. A peça só nasce depois do arquivo.");
+      document.getElementById("pdf").click();
+      return;
+    }
     const tipo = btn.dataset.tipo;
     const modo = btn.dataset.modo || "arquivos";
     const instrucoes = document.getElementById("instrucoes-extra").value.trim();
@@ -1189,7 +1200,8 @@ document.getElementById("btn-excluir").onclick = async () => {
   if (!r.ok) return toast(data.detail || "falha");
   selected = null;
   acoesWrap.hidden = true;
-  emptyState.hidden = false;
+  emptyState.hidden = true;
+  document.getElementById("btn-como").setAttribute("aria-expanded", "false");
   stageActions.hidden = true;
   toast("Processo excluído.");
   refreshCasos();
