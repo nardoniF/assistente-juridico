@@ -208,7 +208,7 @@ function renderLista(selectId) {
     btn.type = "button";
     btn.className = "caso" + (selectId === c.id ? " active" : "");
     btn.innerHTML = `<strong>${m.numero || c.id}</strong>
-      <div class="meta">${(m.reclamante || "—").slice(0, 36)} × ${(m.reclamado || "—").slice(0, 36)}</div>
+      <div class="meta">${rotuloPartes(m).slice(0, 80)}</div>
       <div class="meta">${filesLabel(c)}</div>`;
     btn.onclick = () => selectCase(c);
     lista.appendChild(btn);
@@ -297,9 +297,7 @@ function selectCase(c) {
   const m = c.meta || {};
   stageEyebrow.textContent = "Processo ativo";
   casoTitulo.textContent = m.numero || c.id;
-  const nomeA = pareceNome(m.reclamante) || "—";
-  const nomeB = pareceNome(m.reclamado) || "—";
-  casoAtual.textContent = `${nomeA.slice(0, 60)} × ${nomeB.slice(0, 60)} · ${c.path}`;
+  casoAtual.textContent = `${rotuloPartes(m)} · ${c.path}`;
   renderIndice(m);
   renderExtrato(m);
   carregarCamadas();
@@ -419,6 +417,14 @@ function folhasLista(text) {
     .filter((n) => n > 0);
 }
 
+function rotuloPartes(meta) {
+  const a = pareceNome(meta && meta.reclamante);
+  const b = pareceNome(meta && meta.reclamado);
+  if (a && b) return `${a} × ${b}`;
+  if (a || b) return a || b;
+  return "Sem nome das partes";
+}
+
 function pareceNome(valor) {
   const s = String(valor || "").replace(/\s+/g, " ").trim();
   if (!s || s.length > 80) return "";
@@ -460,6 +466,10 @@ function aplicarCapa(meta) {
   const labB = document.getElementById("lab-reclamado");
   if (labA) labA.textContent = langAtual === "en" ? (trab ? "Claimant" : "Petitioner") : ativo;
   if (labB) labB.textContent = langAtual === "en" ? (trab ? "Defendant" : "Respondent") : passivo;
+  const capaLabA = document.getElementById("capa-lab-a");
+  const capaLabB = document.getElementById("capa-lab-b");
+  if (capaLabA) capaLabA.textContent = labA ? labA.textContent : ativo;
+  if (capaLabB) capaLabB.textContent = labB ? labB.textContent : passivo;
   const persona = document.getElementById("persona");
   if (persona) {
     const juizo = langAtual === "en" ? "Court" : "Juízo";
@@ -485,8 +495,14 @@ function renderExtrato(meta) {
   document.getElementById("ex-numero").value = ex.numero || meta.numero || "";
   document.getElementById("ex-autuacao").value = ex.autuacao || meta.autuacao || "";
   document.getElementById("ex-valor").value = ex.valor_causa || meta.valor_causa || "";
-  document.getElementById("ex-reclamante").value = pareceNome(ex.reclamante || meta.reclamante);
-  document.getElementById("ex-reclamado").value = pareceNome(ex.reclamado || meta.reclamado);
+  const nomeA = pareceNome(ex.reclamante || meta.reclamante);
+  const nomeB = pareceNome(ex.reclamado || meta.reclamado);
+  document.getElementById("ex-reclamante").value = nomeA;
+  document.getElementById("ex-reclamado").value = nomeB;
+  const capaA = document.getElementById("capa-nome-a");
+  const capaB = document.getElementById("capa-nome-b");
+  if (capaA) capaA.value = nomeA;
+  if (capaB) capaB.value = nomeB;
   aplicarCapa(meta);
   const body = document.querySelector("#cruzamento tbody");
   body.innerHTML = "";
@@ -1028,6 +1044,16 @@ document.getElementById("btn-salvar").onclick = async () => {
   } finally {
     setBusy(false);
   }
+};
+
+document.getElementById("btn-gravar-nomes").onclick = () => {
+  if (!selected) {
+    toast("Abra o processo antes de gravar os nomes.");
+    return;
+  }
+  document.getElementById("ex-reclamante").value = document.getElementById("capa-nome-a").value.trim();
+  document.getElementById("ex-reclamado").value = document.getElementById("capa-nome-b").value.trim();
+  document.getElementById("btn-salvar-extrato").click();
 };
 
 document.getElementById("btn-salvar-extrato").onclick = async () => {

@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=9" />
+  <link rel="stylesheet" href="styles.css?v=10" />
 </head>
 <body>
   <div class="ambiance" aria-hidden="true"></div>
@@ -91,6 +91,15 @@
       </header>
 
       <section class="panel actions" id="comando">
+        <div class="nomes-capa" id="nomes-capa">
+          <label><span id="capa-lab-a">Requerente</span>
+            <input id="capa-nome-a" type="text" placeholder="Nome de quem entrou com a ação" autocomplete="off" />
+          </label>
+          <label><span id="capa-lab-b">Requerido</span>
+            <input id="capa-nome-b" type="text" placeholder="Nome da outra parte" autocomplete="off" />
+          </label>
+          <button type="button" id="btn-gravar-nomes" class="accent">Gravar nomes na pasta</button>
+        </div>
         <div class="posicao-row">
           <label><span class="posicao-nome">Posição</span>
             <select id="persona">
@@ -333,6 +342,8 @@
     <form method="dialog" id="form-ajustes">
       <h2>Ajustes</h2>
       <p class="muted">Groq gratuito fica no servidor para teste. Para analisar o processo, escolha <strong>OpenAI</strong> ou <strong>Gemini Pro</strong> e cole a chave paga.</p>
+      <div class="ajustes-cols">
+      <div>
       <label>Plano de IA
         <select id="preset">
           <option value="google_pro">Gemini Pro — qualidade (pago, recomendado)</option>
@@ -354,6 +365,13 @@
       <label>OAB
         <input id="oab" type="text" placeholder="OAB/SP 000000" />
       </label>
+      <label>Modelo (avançado)
+        <input id="api-model" type="text" />
+      </label>
+      <p id="custo-info" class="muted micro"></p>
+      <p id="pasta-info" class="muted micro"></p>
+      </div>
+      <div>
       <div id="convidados-box">
         <h3>Convidados</h3>
         <p class="muted micro">Acesso gratuito para quem você incluir aqui. Os demais, quando a cobrança existir, pagam por ação: cada peça nova é uma. Refinar a mesma peça não cobra de novo.</p>
@@ -376,11 +394,8 @@
         <h3>Guarda dos arquivos</h3>
         <p class="muted micro">O PDF fica na pasta deste xThemis até você excluir o processo. A exclusão fica registrada fora da pasta, com data e número, sem cópia do PDF.</p>
         <ul id="exclusoes-lista" class="convidados-lista"></ul>
-      <label>Modelo (avançado)
-        <input id="api-model" type="text" />
-      </label>
-      <p id="custo-info" class="muted micro"></p>
-      <p id="pasta-info" class="muted micro"></p>
+      </div>
+      </div>
       <menu>
         <button value="cancel" class="ghost">Fechar</button>
         <button id="salvar-ajustes" value="default" class="accent">Salvar</button>
@@ -428,6 +443,6 @@
   </dialog>
 
   <script src="config.js"></script>
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>
