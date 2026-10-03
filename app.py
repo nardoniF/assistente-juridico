@@ -33,7 +33,7 @@ import prompts
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 CACHE_NAME = "extrato.json"
-EXTRACT_VERSION = 7
+EXTRACT_VERSION = 8
 PRODUCT = "Harvey.ai"
 SITE_PASSWORD = (os.environ.get("SITE_PASSWORD") or "").strip()
 JOBS: dict[str, dict] = {}
@@ -216,8 +216,79 @@ def set_config(payload: dict):
     return get_config()
 
 
+def _adotar_nomes(case: Path, texto: str) -> Path:
+    """Copia para a pasta o nome que a peça já leu nos autos."""
+    path = case / "meta.json"
+    meta: dict = {}
+    if path.exists():
+        try:
+            meta = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            meta = {}
+    tem_a = bool(organizer.parte_real(meta.get("reclamante") or ""))
+    tem_b = bool(organizer.parte_real(meta.get("reclamado") or ""))
+    if tem_a and tem_b:
+        return case
+    ativo, passivo = extractor.partes_no_texto(texto or "")
+    if not tem_a and ativo:
+        meta["reclamante"] = ativo
+    if not tem_b and passivo:
+        meta["reclamado"] = passivo
+    if (not tem_a and not ativo) and (not tem_b and not passivo):
+        return case
+    ex = meta.get("extrato")
+    if not isinstance(ex, dict):
+        ex = {}
+        meta["extrato"] = ex
+    if meta.get("reclamante"):
+        ex["reclamante"] = meta["reclamante"]
+    if meta.get("reclamado"):
+        ex["reclamado"] = meta["reclamado"]
+    numero = meta.get("numero") or ""
+    if not numero:
+        achado = re.search(r"\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}", case.name)
+        if achado:
+            numero = achado.group(0)
+            meta["numero"] = numero
+    path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    novo = organizer.rename_case(
+        case,
+        meta.get("reclamante") or "",
+        meta.get("reclamado") or "",
+        numero,
+    )
+    cache = novo / CACHE_NAME
+    if cache.exists():
+        try:
+            cached = json.loads(cache.read_text(encoding="utf-8"))
+            cached.setdefault("meta", {}).update(
+                {
+                    "reclamante": meta.get("reclamante") or "",
+                    "reclamado": meta.get("reclamado") or "",
+                    "extrato": meta.get("extrato"),
+                }
+            )
+            cache.write_text(json.dumps(cached, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+    return novo
+
+
+def _nomes_das_pecas() -> None:
+    raiz = organizer.PROCESSOS
+    if not raiz.exists():
+        return
+    for case in list(raiz.iterdir()):
+        if not case.is_dir():
+            continue
+        ultima = memory.load_ultima(case) or {}
+        if (ultima.get("texto") or "").strip():
+            _adotar_nomes(case, ultima.get("texto") or "")
+
+
 @app.get("/api/casos")
 def casos(request: Request):
+    _nomes_das_pecas()
     return organizer.list_cases(_uid(request))
 
 
@@ -733,7 +804,16 @@ def _persist_peca(
         payload["texto_anterior"] = texto_anterior
     memory.save_ultima(case, payload)
     memory.registrar_peca_aberta(case, payload)
-    return {**files, "refines": refines, "geracoes": geracoes, "segundos": segundos, "fechada": False}
+    case = _adotar_nomes(case, body)
+    return {
+        **files,
+        "refines": refines,
+        "geracoes": geracoes,
+        "segundos": segundos,
+        "fechada": False,
+        "case_id": case.name,
+        "pasta": str(case),
+    }
 
 
 def _metrics_block(files: dict) -> dict:
@@ -817,10 +897,22 @@ def acao(
     files = _persist_peca(
         case, tipo, titulo, body, base_name, learned, segundos=segundos, refine=False
     )
+    if files.get("pasta"):
+        case = Path(files["pasta"])
+        try:
+            gravado = json.loads((case / "meta.json").read_text(encoding="utf-8"))
+        except Exception:
+            gravado = {}
+        if gravado.get("reclamante"):
+            meta["reclamante"] = gravado["reclamante"]
+        if gravado.get("reclamado"):
+            meta["reclamado"] = gravado["reclamado"]
     memory.auditar(case, _nome(request), "gerar", titulo)
     extra_resp = _sinais(body, meta, case)
     metrics = _metrics_block(files)
 
+    pasta = files.get("pasta") or str(case)
+    case_id = files.get("case_id") or case.name
     if modo == "chat":
         return {
             "ok": True,
@@ -828,7 +920,8 @@ def acao(
             "titulo": titulo,
             "texto": body,
             "meta": meta,
-            "pasta": str(case),
+            "id": case_id,
+            "pasta": pasta,
             "arquivos": files,
             "prompts_usados": learned,
             "sugestao_arquivo": files["docx"],
@@ -843,7 +936,8 @@ def acao(
         "texto": body,
         "arquivo_docx": files["docx"],
         "arquivo_pdf": files["pdf"],
-        "pasta": str(case),
+        "id": case_id,
+        "pasta": pasta,
         "meta": meta,
         "prompts_usados": learned,
         **metrics,
@@ -930,6 +1024,8 @@ Capa/meta: {meta}
         refine=True,
         texto_anterior=texto_anterior,
     )
+    if files.get("pasta"):
+        case = Path(files["pasta"])
     memory.auditar(case, _nome(request), "refinar", titulo)
     return {
         "ok": True,
@@ -938,6 +1034,7 @@ Capa/meta: {meta}
         "texto_anterior": texto_anterior,
         "arquivo_docx": files["docx"],
         "arquivo_pdf": files["pdf"],
+        "id": case.name,
         "pasta": str(case),
         "prompts_usados": learned,
         **_metrics_block(files),

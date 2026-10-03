@@ -179,6 +179,9 @@ def parte_real(nome: str) -> str:
     token = slug(n).lower() if n else ""
     if not token or token in _NOMES_FALSOS or len(token) < 3:
         return ""
+    baixo = n.lower()
+    if any(marca in baixo for marca in ("não consta", "nao consta", "não identific", "nao identific")):
+        return ""
     return n
 
 
