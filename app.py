@@ -328,11 +328,11 @@ def _load_or_extract(case: Path, *, refresh: bool = False) -> dict:
     extracao = meta.get("extracao") or {}
     extracao["versao"] = EXTRACT_VERSION
     meta["extracao"] = extracao
+    _sync_case_meta(case, data)
     try:
         cache.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass
-    _sync_case_meta(case, data)
     return data
 
 
@@ -350,9 +350,10 @@ def _sync_case_meta(case: Path, data: dict) -> None:
         meta["extrato"] = saved["extrato"]
         meta["extrato_manual"] = True
         meta["cruzamento"] = (saved.get("extrato") or {}).get("verbas") or meta.get("cruzamento")
-        for key in ("numero", "reclamante", "reclamado", "valor_causa", "autuacao"):
+        for key in ("numero", "valor_causa", "autuacao"):
             if saved.get(key):
                 meta[key] = saved[key]
+    organizer.preservar_nomes(meta, saved)
     path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
@@ -402,6 +403,13 @@ def salvar_extrato(payload: dict):
         if extrato.get(key):
             meta[key] = extrato[key]
     path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    case = organizer.rename_case(
+        case,
+        meta.get("reclamante") or "",
+        meta.get("reclamado") or "",
+        meta.get("numero") or "",
+    )
+    path = case / "meta.json"
     cache = case / CACHE_NAME
     if cache.exists():
         try:
@@ -419,7 +427,7 @@ def salvar_extrato(payload: dict):
             cache.write_text(json.dumps(cached, ensure_ascii=False), encoding="utf-8")
         except Exception:
             pass
-    return {"ok": True, "meta": meta}
+    return {"ok": True, "meta": meta, "id": case.name, "path": str(case)}
 
 
 @app.post("/api/fechar-peca")
@@ -541,6 +549,7 @@ async def atualizar_processo(case_id: str = Form(...), arquivo: UploadFile = Fil
             except Exception:
                 old_meta = {}
         merged = {**old_meta, **meta}
+        organizer.preservar_nomes(merged, old_meta)
         organizer.overwrite_processo_pdf(case, tmp, merged)
         extracao = merged.setdefault("extracao", {})
         extracao["versao"] = EXTRACT_VERSION
@@ -595,6 +604,7 @@ async def juntar_paginas(case_id: str = Form(...), arquivo: UploadFile = File(..
             except Exception:
                 old = {}
         meta = {**old, **(data.get("meta") or {})}
+        organizer.preservar_nomes(meta, old)
         meta["paginas"] = (data.get("meta") or {}).get("paginas")
         extracao = meta.setdefault("extracao", {})
         extracao["versao"] = EXTRACT_VERSION

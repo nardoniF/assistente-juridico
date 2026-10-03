@@ -965,9 +965,13 @@ document.getElementById("btn-salvar-extrato").onclick = async () => {
     const data = await r.json();
     if (!r.ok) throw new Error(data.detail || "falha");
     selected.meta = data.meta;
-    renderExtrato(data.meta);
-    toast("Extrato salvo. A próxima peça usa esta versão.");
+    if (data.id) selected.id = data.id;
+    if (data.path) selected.path = data.path;
+    selectCase(selected);
+    toast("Nomes gravados na pasta. A próxima peça usa esta versão.");
     await refreshCasos(selected.id);
+    const atual = allCasos.find((c) => c.id === selected.id);
+    if (atual) selectCase(atual);
   } catch (e) {
     toast(e.message);
   } finally {
