@@ -143,6 +143,19 @@ async function refreshConfig() {
     (configCache.has_key ? " · chave OK" : " · ainda sem chave");
   document.getElementById("pasta-info").textContent =
     pasta + " · aprendizado: " + (configCache.aprendizado_global || "");
+  const caminho = document.getElementById("pasta-caminho");
+  if (caminho) caminho.textContent = "Pasta: " + (configCache.processos_dir || "");
+  const campoPasta = document.getElementById("pasta-processos");
+  if (campoPasta) {
+    campoPasta.value = configCache.processos_dir || "";
+    campoPasta.disabled = !configCache.pasta_editavel;
+  }
+  const notaPasta = document.getElementById("pasta-nota");
+  if (notaPasta) {
+    notaPasta.textContent = configCache.pasta_editavel
+      ? "No Mac, esta é a pasta. Cada processo vira uma subpasta com o nome das partes e o número."
+      : "No site, as pastas ficam no servidor. Cada caso é uma pasta com o nome das partes, o número, o processo.pdf e um PDF por ação.";
+  }
   document.getElementById("pasta-mini").textContent = configCache.has_key
     ? "xThemis · IA pronta · " + (configCache.provider_label || configCache.provider || "")
     : "Configure a IA em Ajustes (Gemini Pro recomendado)";
@@ -284,7 +297,9 @@ function selectCase(c) {
   const m = c.meta || {};
   stageEyebrow.textContent = "Processo ativo";
   casoTitulo.textContent = m.numero || c.id;
-  casoAtual.textContent = `${(m.reclamante || "—").slice(0, 60)} × ${(m.reclamado || "—").slice(0, 60)} · ${c.path}`;
+  const nomeA = pareceNome(m.reclamante) || "—";
+  const nomeB = pareceNome(m.reclamado) || "—";
+  casoAtual.textContent = `${nomeA.slice(0, 60)} × ${nomeB.slice(0, 60)} · ${c.path}`;
   renderIndice(m);
   renderExtrato(m);
   carregarCamadas();
@@ -404,13 +419,75 @@ function folhasLista(text) {
     .filter((n) => n > 0);
 }
 
+function pareceNome(valor) {
+  const s = String(valor || "").replace(/\s+/g, " ").trim();
+  if (!s || s.length > 80) return "";
+  const baixo = s.toLowerCase();
+  if (/\bart\.?|§|cpc|clt|com base|pressupost|fls?\./i.test(baixo)) return "";
+  if (/^[a-záàâãéêíóôõúç]/.test(s)) return "";
+  const palavras = s.split(" ");
+  if (palavras.length > 8) return "";
+  const lig = new Set(["da", "de", "do", "das", "dos", "e", "di"]);
+  for (const p of palavras) {
+    const n = p.replace(/[.,;]/g, "");
+    if (!n) return "";
+    if (lig.has(n.toLowerCase())) continue;
+    if (n[0] !== n[0].toUpperCase()) return "";
+  }
+  return s;
+}
+
+function areaDoCaso(meta) {
+  const marcada = (meta && meta.area) || "";
+  if (["familia", "trabalhista", "civel", "previdenciario"].includes(marcada)) return marcada;
+  const n = String((meta && meta.numero) || "");
+  const m = n.match(/\d{7}-\d{2}\.\d{4}\.(\d)\./);
+  if (m && m[1] === "5") return "trabalhista";
+  if (m) return "civel";
+  return "trabalhista";
+}
+
+function aplicarCapa(meta) {
+  const temNumero = !!(meta && (meta.numero || meta.area));
+  const area = temNumero ? areaDoCaso(meta) : "trabalhista";
+  const trab = area === "trabalhista";
+  document.querySelectorAll(".so-trabalhista").forEach((el) => {
+    el.hidden = !trab;
+  });
+  const ativo = trab ? "Reclamante" : "Requerente";
+  const passivo = trab ? "Reclamada" : "Requerido";
+  const labA = document.getElementById("lab-reclamante");
+  const labB = document.getElementById("lab-reclamado");
+  if (labA) labA.textContent = langAtual === "en" ? (trab ? "Claimant" : "Petitioner") : ativo;
+  if (labB) labB.textContent = langAtual === "en" ? (trab ? "Defendant" : "Respondent") : passivo;
+  const persona = document.getElementById("persona");
+  if (persona) {
+    const juizo = langAtual === "en" ? "Court" : "Juízo";
+    const map = { reclamada: labB ? labB.textContent : passivo, reclamante: labA ? labA.textContent : ativo, juizo };
+    [...persona.options].forEach((opt) => {
+      if (map[opt.value]) opt.textContent = map[opt.value];
+    });
+  }
+  const ramo = document.getElementById("extrato-ramo");
+  if (ramo) {
+    ramo.textContent = !temNumero
+      ? ""
+      : trab
+        ? "Trabalhista. A tabela cruza a verba da sentença com o pagamento. Confira antes de usar."
+        : "Este processo não é trabalhista. Férias, horas extras e FGTS ficam de fora. O botão Resumo grava o resumo do caso em PDF na pasta.";
+  }
+  const rec = document.querySelector("[data-tipo=recurso]");
+  if (rec) rec.textContent = trab ? (langAtual === "en" ? "Ordinary appeal" : "Recurso ordinário") : (langAtual === "en" ? "Appeal" : "Apelação");
+}
+
 function renderExtrato(meta) {
   const ex = (meta && meta.extrato) || {};
   document.getElementById("ex-numero").value = ex.numero || meta.numero || "";
   document.getElementById("ex-autuacao").value = ex.autuacao || meta.autuacao || "";
   document.getElementById("ex-valor").value = ex.valor_causa || meta.valor_causa || "";
-  document.getElementById("ex-reclamante").value = ex.reclamante || meta.reclamante || "";
-  document.getElementById("ex-reclamado").value = ex.reclamado || meta.reclamado || "";
+  document.getElementById("ex-reclamante").value = pareceNome(ex.reclamante || meta.reclamante);
+  document.getElementById("ex-reclamado").value = pareceNome(ex.reclamado || meta.reclamado);
+  aplicarCapa(meta);
   const body = document.querySelector("#cruzamento tbody");
   body.innerHTML = "";
   const rows = ex.verbas || meta.cruzamento || [];
@@ -1117,6 +1194,9 @@ document.getElementById("salvar-ajustes").onclick = async (ev) => {
     oab: document.getElementById("oab").value.trim(),
   };
   if (key && !key.startsWith("•")) body.api_key = key;
+  if (configCache?.pasta_editavel) {
+    body.processos_dir = document.getElementById("pasta-processos").value.trim();
+  }
   await fetch(apiUrl("/api/config"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1394,6 +1474,7 @@ function aplicarIdioma(lang) {
       if (pack.lados[opt.value]) opt.textContent = pack.lados[opt.value];
     });
   }
+  aplicarCapa(selected?.meta);
   const ir = document.getElementById("lang-go");
   if (ir && langDoDominio()) {
     ir.textContent = lang === "en" ? "Português" : "English";

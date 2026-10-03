@@ -81,6 +81,19 @@ def web_mode() -> bool:
     )
 
 
+def usar_pasta(path: str) -> str:
+    """No programa local, a advogada escolhe onde as pastas dos processos ficam."""
+    global PROCESSOS
+    if web_mode():
+        raise ValueError("No site, a pasta dos processos fica no servidor.")
+    novo = Path(path or "").expanduser().resolve()
+    if not novo.is_absolute():
+        raise ValueError("Informe o caminho completo da pasta.")
+    novo.mkdir(parents=True, exist_ok=True)
+    PROCESSOS = novo
+    return str(PROCESSOS)
+
+
 def ensure_dirs() -> None:
     PROCESSOS.mkdir(parents=True, exist_ok=True)
     HOME_APP.mkdir(parents=True, exist_ok=True)
@@ -132,6 +145,11 @@ def load_config() -> dict:
         data["model"] = os.environ["API_MODEL"].strip()
     if os.environ.get("API_BASE_URL") and provider == "groq" and not saved_key:
         data["base_url"] = os.environ["API_BASE_URL"].rstrip("/")
+    if not web_mode() and (data.get("processos_dir") or "").strip():
+        try:
+            usar_pasta(data["processos_dir"])
+        except (ValueError, OSError):
+            pass
     return data
 
 
@@ -174,10 +192,15 @@ def slug(text: str, max_len: int = 60) -> str:
 
 
 def parte_real(nome: str) -> str:
-    """Nome digitado ou lido no PDF. Rótulo genérico (Reclamante, Réu) não conta."""
+    """Nome digitado ou lido no PDF. Rótulo genérico ou frase de lei não conta."""
     n = re.sub(r"\s+", " ", (nome or "").strip())
     token = slug(n).lower() if n else ""
     if not token or token in _NOMES_FALSOS or len(token) < 3:
+        return ""
+    baixo = n.lower()
+    if any(marca in baixo for marca in (" art.", " art ", "§", "cpc", "clt", "com base", "pressupost")):
+        return ""
+    if n[:1].islower() or len(n.split()) > 8:
         return ""
     return n
 

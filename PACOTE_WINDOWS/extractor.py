@@ -224,15 +224,58 @@ def _limpa_parte(texto: str) -> str:
         flags=re.I,
     )[0]
     linha = re.sub(r"\s+", " ", linha).strip(" \t.;:-")
-    if len(linha) > 120:
-        linha = linha[:120].rsplit(" ", 1)[0].strip()
+    if len(linha) > 80:
+        return ""
     if re.fullmatch(
         r"(?:RECLAMANTE|RECLAMADO|AUTOR|AUTORA|R[ÉE]U|REQUERENTE|REQUERIDO|REQUERIDA|PARTE)",
         linha,
         flags=re.I,
     ):
         return ""
+    if not _parece_nome(linha):
+        return ""
     return linha
+
+
+_LIGACOES = {"da", "de", "do", "das", "dos", "e", "di"}
+
+
+def _parece_nome(linha: str) -> bool:
+    """Nome de parte. Frase de lei, artigo ou pedido não entra."""
+    if not linha or len(linha) > 80:
+        return False
+    baixo = linha.lower()
+    if any(
+        marca in baixo
+        for marca in (
+            " art.",
+            " art ",
+            "§",
+            "cpc",
+            "clt",
+            "código",
+            "codigo",
+            "com base",
+            "pressupost",
+            "fls.",
+            "folha",
+        )
+    ):
+        return False
+    if linha[:1].islower():
+        return False
+    palavras = linha.split()
+    if not palavras or len(palavras) > 8:
+        return False
+    for palavra in palavras:
+        nucleo = palavra.strip(".,;")
+        if not nucleo:
+            return False
+        if nucleo.lower() in _LIGACOES:
+            continue
+        if not (nucleo[:1].isupper() or nucleo.isupper()):
+            return False
+    return True
 
 
 def _acha_parte(blob: str, labels: str) -> str:

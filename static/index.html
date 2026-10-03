@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=7" />
+  <link rel="stylesheet" href="styles.css?v=9" />
 </head>
 <body>
   <div class="ambiance" aria-hidden="true"></div>
@@ -56,6 +56,7 @@
 
       <div class="rail-head">
         <h2>Processos</h2>
+        <p id="pasta-caminho" class="micro"></p>
         <input id="busca-casos" type="search" placeholder="Buscar…" autocomplete="off" />
       </div>
       <div id="lista" class="lista"></div>
@@ -136,7 +137,7 @@
                 <button data-tipo="alegacoes_finais" data-modo="arquivos" class="direct">Alegações finais</button>
                 <button data-tipo="embargos" data-modo="arquivos" class="direct">Embargos</button>
                 <button data-tipo="impugnacao_laudo" data-modo="arquivos" class="direct">Impug. laudo</button>
-                <button data-tipo="impugnacao_calculos" data-modo="arquivos" class="direct">Impug. cálculos</button>
+                <button data-tipo="impugnacao_calculos" data-modo="arquivos" class="direct so-trabalhista">Impug. cálculos</button>
                 <button data-tipo="manifestacao" data-modo="arquivos" class="direct">Manifestação</button>
                 <button data-tipo="peticao" data-modo="arquivos" class="direct">Petição</button>
                 <button data-tipo="acordo" data-modo="arquivos" class="direct">Acordo</button>
@@ -149,9 +150,9 @@
                 <button data-tipo="tutela" data-modo="arquivos" class="direct">Tutela de urgência</button>
                 <button data-tipo="execucao" data-modo="arquivos" class="direct">Execução</button>
                 <button data-tipo="embargos_execucao" data-modo="arquivos" class="direct">Embargos à execução</button>
-                <button data-tipo="agravo_peticao" data-modo="arquivos" class="direct">Agravo de petição</button>
+                <button data-tipo="agravo_peticao" data-modo="arquivos" class="direct so-trabalhista">Agravo de petição</button>
                 <button data-tipo="agravo_instrumento" data-modo="arquivos" class="direct">Agravo de instrumento</button>
-                <button data-tipo="revista" data-modo="arquivos" class="direct">Recurso de revista</button>
+                <button data-tipo="revista" data-modo="arquivos" class="direct so-trabalhista">Recurso de revista</button>
                 <button data-tipo="quesitos" data-modo="arquivos" class="direct">Quesitos</button>
               </div>
             </div>
@@ -202,7 +203,7 @@
             <input id="prazo" type="hidden" />
           </div>
           <div class="chips" id="prompt-chips">
-            <button type="button" data-prompt="Cruze férias, 13º, aviso e FGTS com o TRCT e comprovantes. Cite as folhas. Peça dedução ou compensação do que já foi pago.">Cruzar TRCT</button>
+            <button type="button" class="so-trabalhista" data-prompt="Cruze férias, 13º, aviso e FGTS com o TRCT e comprovantes. Cite as folhas. Peça dedução ou compensação do que já foi pago.">Cruzar TRCT</button>
             <button type="button" data-prompt="Impugne o laudo: aponte o que não consta dos autos, o que contradiz holerites/ponto e o que deve ser desconsiderado.">Impugnar laudo</button>
             <button type="button" data-prompt="Revise a tempestividade, os pedidos e as folhas citadas. Se alguma folha não existir no processo, marque NÃO CONSTA.">Revisar fls.</button>
             <button type="button" data-prompt="A peça ficou incompleta nos pedidos. Reescreva os pedidos de forma objetiva, um por linha, sem inventar valor.">Pedidos objetivos</button>
@@ -250,15 +251,15 @@
             <h3>Extrato do processo</h3>
             <button type="button" id="btn-salvar-extrato" class="ghost">Salvar extrato</button>
           </div>
-          <p class="micro">A advogada corrige. O cruzamento é heurístico: condenação e pagamento com as mesmas palavras nas folhas.</p>
+          <p id="extrato-ramo" class="micro"></p>
           <div class="extrato-grid">
             <label>Número<input id="ex-numero" type="text" /></label>
             <label>Autuação<input id="ex-autuacao" type="text" /></label>
             <label>Valor da causa<input id="ex-valor" type="text" /></label>
-            <label>Reclamante<input id="ex-reclamante" type="text" /></label>
-            <label class="span2">Reclamada<input id="ex-reclamado" type="text" /></label>
+            <label><span id="lab-reclamante">Reclamante</span><input id="ex-reclamante" type="text" /></label>
+            <label class="span2"><span id="lab-reclamado">Reclamada</span><input id="ex-reclamado" type="text" /></label>
           </div>
-          <div class="table-wrap">
+          <div class="table-wrap so-trabalhista" id="extrato-verbas">
             <table class="cruzamento" id="cruzamento">
               <thead>
                 <tr>
@@ -366,6 +367,12 @@
         <button type="button" id="btn-convidado" class="ghost">Incluir na lista gratuita</button>
       </div>
         <p class="muted micro">Cobrança por ação ainda não está ligada. O endereço público é www.xthemis.com.br. O servidor gratuito dorme sem visita e acorda no próximo acesso.</p>
+        <h3>Pasta dos processos</h3>
+        <p class="muted micro">Cada processo vira uma pasta com o nome das partes e o número. Dentro ficam o processo.pdf inteiro e um PDF novo para cada ação.</p>
+        <label>Diretório
+          <input id="pasta-processos" type="text" placeholder="/Users/…/Processos" />
+        </label>
+        <p id="pasta-nota" class="muted micro"></p>
         <h3>Guarda dos arquivos</h3>
         <p class="muted micro">O PDF fica na pasta deste xThemis até você excluir o processo. A exclusão fica registrada fora da pasta, com data e número, sem cópia do PDF.</p>
         <ul id="exclusoes-lista" class="convidados-lista"></ul>
@@ -421,6 +428,6 @@
   </dialog>
 
   <script src="config.js"></script>
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>

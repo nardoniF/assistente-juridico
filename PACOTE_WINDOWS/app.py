@@ -186,6 +186,7 @@ def get_config():
         "processos_dir": str(organizer.PROCESSOS),
         "aprendizado_global": str(memory.GLOBAL_FILE),
         "web_mode": web_mode(),
+        "pasta_editavel": not web_mode(),
         "escritorio": cfg.get("escritorio") or "",
         "oab": cfg.get("oab") or "",
         "advogada": cfg.get("advogada") or "",
@@ -214,6 +215,11 @@ def set_config(payload: dict):
     for campo in ("escritorio", "oab", "advogada"):
         if campo in payload:
             allowed[campo] = (payload.get(campo) or "").strip()
+    if "processos_dir" in payload and not web_mode():
+        try:
+            allowed["processos_dir"] = organizer.usar_pasta(payload.get("processos_dir") or "")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
     if "preset" in payload and payload["preset"] in PRESETS:
         p = PRESETS[payload["preset"]]
         allowed.update(
@@ -494,8 +500,18 @@ async def importar(request: Request, arquivo: UploadFile = File(...)):
 
 def _salvar_import(tmp: Path, uid: str | None) -> dict:
     data = extractor.extract_process(tmp)
+    meta = data.setdefault("meta", {})
+    meta["reclamante"] = organizer.parte_real(meta.get("reclamante") or "")
+    meta["reclamado"] = organizer.parte_real(meta.get("reclamado") or "")
+    meta["area"] = area_do_processo(meta, data.get("texto") or "")
+    if meta["area"] != "trabalhista":
+        meta["cruzamento"] = []
+        if isinstance(meta.get("extrato"), dict):
+            meta["extrato"]["verbas"] = []
+            meta["extrato"]["reclamante"] = meta["reclamante"]
+            meta["extrato"]["reclamado"] = meta["reclamado"]
     if uid:
-        data["meta"]["dono"] = uid
+        meta["dono"] = uid
     dest = organizer.copy_into_case(tmp, data["meta"])
     extracao = data.setdefault("meta", {}).get("extracao") or {}
     extracao["versao"] = EXTRACT_VERSION
@@ -639,7 +655,25 @@ def area_do_processo(meta: dict, texto: str) -> str:
     u = blob.upper()
     if ramo == "5" or "VARA DO TRABALHO" in u or "RECLAMAÇÃO TRABALHISTA" in u or "RECLAMACAO TRABALHISTA" in u:
         return "trabalhista"
-    if "VARA DE FAMÍLIA" in u or "VARA DE FAMILIA" in u or "VARA DA FAMÍLIA" in u or "VARA DA FAMILIA" in u:
+    if any(
+        marca in u
+        for marca in (
+            "VARA DE FAMÍLIA",
+            "VARA DE FAMILIA",
+            "VARA DA FAMÍLIA",
+            "VARA DA FAMILIA",
+            "GUARDA COMPARTILHADA",
+            "GUARDA UNILATERAL",
+            "GUARDA DE FILH",
+            "AÇÃO DE GUARDA",
+            "ACAO DE GUARDA",
+            "ALIMENTOS",
+            "REGULAMENTAÇÃO DE CONVIV",
+            "REGULAMENTACAO DE CONVIV",
+            "DIVÓRCIO",
+            "DIVORCIO",
+        )
+    ):
         return "familia"
     if "PREVIDENCI" in u or " INSS" in u:
         return "previdenciario"
@@ -659,9 +693,11 @@ def _build_user_prompt(
     prazo: str = "",
 ) -> str:
     learned = memory.combined_instructions(case, tipo, extra)
+    area = area or area_do_processo(meta, texto)
+    meta["area"] = area
     rows = ((meta.get("extrato") or {}).get("verbas")) or meta.get("cruzamento") or []
     cruz = ""
-    if rows:
+    if area == "trabalhista" and rows:
         cruz = "\n\n" + extractor.cruzamento_texto(rows)
         if meta.get("extrato_manual"):
             cruz += "\nExtrato corrigido pela advogada: priorize estes dados de capa e verbas.\n"
@@ -801,7 +837,7 @@ def acao(
 
     t0 = time.perf_counter()
     try:
-        body = llm.complete(prompts.SYSTEM, user_prompt)
+        body = llm.complete(prompts.system_para(area_do_processo(meta, texto)), user_prompt)
     except llm.LlmError as e:
         raise HTTPException(400, str(e))
     except Exception:
@@ -906,7 +942,7 @@ Capa/meta: {meta}
     texto_anterior = ultima.get("texto") or ""
     t0 = time.perf_counter()
     try:
-        body = llm.complete(prompts.SYSTEM, refine_prompt)
+        body = llm.complete(prompts.system_para(area_do_processo(meta, texto_autos)), refine_prompt)
     except llm.LlmError as e:
         raise HTTPException(400, str(e))
     except Exception:
