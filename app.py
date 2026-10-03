@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -612,6 +613,43 @@ async def juntar_paginas(case_id: str = Form(...), arquivo: UploadFile = File(..
             merged.unlink()
 
 
+def area_do_processo(meta: dict, texto: str) -> str:
+    """Ramo da justiça pelo número CNJ e pelo texto do PDF."""
+    blob = " ".join(
+        [
+            str(meta.get("numero") or ""),
+            str(meta.get("titulo") or ""),
+            (texto or "")[:15000],
+        ]
+    )
+    m = re.search(r"\d{7}-\d{2}\.\d{4}\.(\d)\.\d{2}\.\d{4}", blob)
+    ramo = m.group(1) if m else ""
+    u = blob.upper()
+    if ramo == "5" or "VARA DO TRABALHO" in u or "RECLAMAÇÃO TRABALHISTA" in u or "RECLAMACAO TRABALHISTA" in u:
+        return "trabalhista"
+    if any(
+        marca in u
+        for marca in (
+            "VARA DE FAMÍLIA",
+            "VARA DE FAMILIA",
+            "GUARDA COMPARTILHADA",
+            "GUARDA UNILATERAL",
+            "GUARDA DE FILH",
+            "AÇÃO DE GUARDA",
+            "ACAO DE GUARDA",
+            "ALIMENTOS",
+            "DIVÓRCIO",
+            "DIVORCIO",
+        )
+    ):
+        return "familia"
+    if "PREVIDENCI" in u or " INSS" in u:
+        return "previdenciario"
+    if ramo in ("4", "8"):
+        return "civel"
+    return "trabalhista"
+
+
 def _build_user_prompt(
     case: Path,
     tipo: str,
@@ -623,9 +661,11 @@ def _build_user_prompt(
     prazo: str = "",
 ) -> str:
     learned = memory.combined_instructions(case, tipo, extra)
+    area = area_do_processo(meta, texto)
+    meta["area"] = area
     rows = ((meta.get("extrato") or {}).get("verbas")) or meta.get("cruzamento") or []
     cruz = ""
-    if rows:
+    if area == "trabalhista" and rows:
         cruz = "\n\n" + extractor.cruzamento_texto(rows)
         if meta.get("extrato_manual"):
             cruz += "\nExtrato corrigido pela advogada: priorize estes dados de capa e verbas.\n"
@@ -766,7 +806,7 @@ def acao(
 
     t0 = time.perf_counter()
     try:
-        body = llm.complete(prompts.SYSTEM, user_prompt)
+        body = llm.complete(prompts.system_para(area_do_processo(meta, texto)), user_prompt)
     except llm.LlmError as e:
         raise HTTPException(400, str(e))
     except Exception:
@@ -871,7 +911,7 @@ Capa/meta: {meta}
     texto_anterior = ultima.get("texto") or ""
     t0 = time.perf_counter()
     try:
-        body = llm.complete(prompts.SYSTEM, refine_prompt)
+        body = llm.complete(prompts.system_para(area_do_processo(meta, texto_autos)), refine_prompt)
     except llm.LlmError as e:
         raise HTTPException(400, str(e))
     except Exception:

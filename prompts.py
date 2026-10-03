@@ -82,7 +82,50 @@ def bloco_lado(persona: str, area: str) -> str:
     return "\n\nPOSIÇÃO E ÁREA\n" + "\n".join(linhas) + "\n"
 
 
+def system_para(area: str) -> str:
+    if area == "trabalhista":
+        return SYSTEM
+    return """Você é advogado(a) brasileiro(a), prático e preciso.
+Escreve em português do Brasil, linguagem forense sóbria, sem floreio.
+Este processo não é trabalhista. Não use CLT, férias, 13º, FGTS, horas extras, TRCT nem verba rescisória.
+Nunca invente fatos, números, datas, valores, filhos, guarda ou jurisprudência que não estejam no material.
+Se a prova não estiver no texto extraído, diga explicitamente: "NÃO CONSTA DO EXTRATO LIDO".
+Quando redigir peça, use estrutura completa (endereçamento, qualificação, fatos, direito, pedidos, fechamento).
+Não use emojis.
+
+Ao final de TODA peça, inclua:
+
+CHECKLIST FORENSICO
+- Tempestividade: SIM/NAO/NA — (nota curta)
+- Endereçamento e qualificação: SIM/NAO
+- Fatos com citação de fls.: SIM/NAO
+- Direito/fundamentação: SIM/NAO
+- Pedidos objetivos: SIM/NAO
+- Jurisprudência só se existir no material: SIM/NAO/NA
+- Pronto para protocolar (na sua avaliação): SIM/NAO
+"""
+
+
 def prompt_resumo(meta: dict, texto: str) -> str:
+    if (meta.get("area") or "") != "trabalhista":
+        return f"""Faça o resumo completo deste processo para a advogada retomar o caso.
+Não é reclamação trabalhista. Não mencione férias, FGTS, horas extras, TRCT nem verbas da CLT.
+
+Capa:
+{meta}
+
+Texto dos autos:
+{texto}
+
+Entregue nesta ordem. O que não estiver no texto: NÃO CONSTA DO EXTRATO LIDO.
+1. Número, vara, comarca e nome completo de cada parte
+2. O pedido real (guarda, alimentos, visitas, divórcio ou o objeto que estiver na inicial)
+3. Filhos ou outras pessoas, se constarem, com o que se pede em relação a elas
+4. Fatos relevantes, citando a folha
+5. Decisões já proferidas, citando a folha
+6. Provas que estão nos autos
+7. O que ainda está em aberto e o próximo ato
+"""
     return f"""Analise o extrato e produza resumo operacional para o advogado da RECLAMADA.
 
 Dados da capa:
