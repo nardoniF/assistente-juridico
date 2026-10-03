@@ -910,7 +910,7 @@ async function importFile(file) {
     if (!r.ok && !data.ok) throw new Error(data.detail || "falha");
     if (data.job) {
       setBusy(true, "PDF grande na fila…", "importar");
-      for (let i = 0; i < 80; i++) {
+      for (let i = 0; i < 300; i++) {
         await new Promise((res) => setTimeout(res, 3000));
         const j = await (await fetch(apiUrl("/api/job?id=" + data.job))).json();
         if (j.status === "ok") {
@@ -918,7 +918,7 @@ async function importFile(file) {
           break;
         }
         if (j.status === "erro") throw new Error(j.detail || "fila");
-        if (i === 79) throw new Error("A fila ainda está lendo. Atualize a página daqui a pouco.");
+        if (i === 299) throw new Error("A fila ainda está lendo. Atualize a página daqui a pouco.");
       }
     }
     setStatus(importStatus, "Pasta criada.", "ok");
