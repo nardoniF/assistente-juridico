@@ -62,6 +62,120 @@ const STAGES = {
   ],
 };
 
+let pastaHandle = null;
+
+function dbPasta() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("xthemis-pasta", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("kv");
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function lerPastaHandle() {
+  if (pastaHandle) return pastaHandle;
+  try {
+    const db = await dbPasta();
+    pastaHandle = await new Promise((resolve, reject) => {
+      const tx = db.transaction("kv", "readonly");
+      const q = tx.objectStore("kv").get("dir");
+      q.onsuccess = () => resolve(q.result || null);
+      q.onerror = () => reject(q.error);
+    });
+  } catch (e) {
+    pastaHandle = null;
+  }
+  return pastaHandle;
+}
+
+async function salvarPastaHandle(handle) {
+  pastaHandle = handle;
+  const db = await dbPasta();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction("kv", "readwrite");
+    tx.objectStore("kv").put(handle, "dir");
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+function mostrarPastaLocal(nome) {
+  const caminho = document.getElementById("pasta-caminho");
+  const campo = document.getElementById("pasta-processos");
+  if (caminho) caminho.textContent = "Pasta neste Mac: " + nome;
+  if (campo) campo.value = nome;
+}
+
+async function escolherPasta() {
+  if (!window.showDirectoryPicker) {
+    toast("Abra no Chrome para escolher a pasta.");
+    return;
+  }
+  try {
+    let handle;
+    try {
+      handle = await window.showDirectoryPicker({ mode: "readwrite", id: "xthemis-processos" });
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+      handle = await window.showDirectoryPicker({ mode: "readwrite" });
+    }
+    await salvarPastaHandle(handle);
+    mostrarPastaLocal(handle.name);
+    toast("Pasta escolhida: " + handle.name);
+  } catch (e) {
+    if (e && e.name === "AbortError") return;
+    toast("Não abri a pasta.");
+  }
+}
+
+async function pastaComPermissao() {
+  const handle = await lerPastaHandle();
+  if (!handle) return null;
+  let perm = "prompt";
+  try {
+    perm = await handle.queryPermission({ mode: "readwrite" });
+    if (perm !== "granted") perm = await handle.requestPermission({ mode: "readwrite" });
+  } catch (e) {
+    return null;
+  }
+  return perm === "granted" ? handle : null;
+}
+
+async function gravarArquivoNaPasta(caseId, nomeArquivo) {
+  const raiz = await pastaComPermissao();
+  if (!raiz || !caseId || !nomeArquivo) return false;
+  const r = await fetch(
+    apiUrl(
+      "/api/download?case_id=" +
+        encodeURIComponent(caseId) +
+        "&arquivo=" +
+        encodeURIComponent(nomeArquivo)
+    )
+  );
+  if (!r.ok) return false;
+  const dir = await raiz.getDirectoryHandle(caseId, { create: true });
+  const file = await dir.getFileHandle(nomeArquivo, { create: true });
+  const w = await file.createWritable();
+  await w.write(await r.blob());
+  await w.close();
+  return true;
+}
+
+async function espelharCaso(caseId, arquivos) {
+  const nomes = [...new Set(["processo.pdf", ...(arquivos || [])].filter(Boolean))];
+  if (!(await lerPastaHandle())) return;
+  try {
+    let ok = 0;
+    for (const nome of nomes) {
+      if (await gravarArquivoNaPasta(caseId, nome)) ok += 1;
+    }
+    if (ok) toast("Copiado para a pasta do Mac.");
+  } catch (e) {
+    toast("A pasta do Mac não recebeu o arquivo.");
+  }
+}
+
 function apiUrl(path) {
   const base = ((window.HARVEY && window.HARVEY.apiBase) || "").replace(/\/$/, "");
   return base + path;
@@ -144,17 +258,13 @@ async function refreshConfig() {
   document.getElementById("pasta-info").textContent =
     pasta + " · aprendizado: " + (configCache.aprendizado_global || "");
   const caminho = document.getElementById("pasta-caminho");
-  if (caminho) caminho.textContent = "Pasta: " + (configCache.processos_dir || "");
+  if (caminho && !pastaHandle) caminho.textContent = "Nenhuma pasta escolhida neste Mac";
   const campoPasta = document.getElementById("pasta-processos");
-  if (campoPasta) {
-    campoPasta.value = configCache.processos_dir || "";
-    campoPasta.disabled = !configCache.pasta_editavel;
-  }
+  if (campoPasta && !pastaHandle) campoPasta.value = "";
   const notaPasta = document.getElementById("pasta-nota");
   if (notaPasta) {
-    notaPasta.textContent = configCache.pasta_editavel
-      ? "No Mac, esta é a pasta. Cada processo vira uma subpasta com o nome das partes e o número."
-      : "No site, as pastas ficam no servidor. Cada caso é uma pasta com o nome das partes, o número, o processo.pdf e um PDF por ação.";
+    notaPasta.textContent =
+      "Escolher pasta abre a janela do Mac. Cada processo vira uma subpasta ali, com o processo.pdf e um PDF por ação.";
   }
   document.getElementById("pasta-mini").textContent = configCache.has_key
     ? "xThemis · IA pronta · " + (configCache.provider_label || configCache.provider || "")
@@ -816,6 +926,7 @@ async function importFile(file) {
     selectCase(selected);
     await refreshCasos(data.id);
     toast("Processo na pasta · processo.pdf único.");
+    await espelharCaso(data.id, ["processo.pdf"]);
   } catch (e) {
     setStatus(importStatus, "Não consegui importar: " + e.message, "error");
     toast("Falha na importação");
@@ -930,6 +1041,7 @@ document.querySelectorAll("#comando button[data-tipo]").forEach((btn) => {
         document.getElementById("instrucoes-extra").value = "";
       }
       await syncSelected();
+      await espelharCaso(selected.id, [dx, pf]);
       toast(`Peça pronta: ${dx} · ${pf}`);
     } catch (e) {
       toast(e.message);
@@ -1045,6 +1157,12 @@ document.getElementById("btn-salvar").onclick = async () => {
     setBusy(false);
   }
 };
+
+document.getElementById("btn-escolher-pasta").onclick = escolherPasta;
+document.getElementById("btn-escolher-pasta-ajustes").onclick = escolherPasta;
+lerPastaHandle().then((h) => {
+  if (h) mostrarPastaLocal(h.name);
+});
 
 document.getElementById("btn-gravar-nomes").onclick = () => {
   if (!selected) {
@@ -1220,9 +1338,6 @@ document.getElementById("salvar-ajustes").onclick = async (ev) => {
     oab: document.getElementById("oab").value.trim(),
   };
   if (key && !key.startsWith("•")) body.api_key = key;
-  if (configCache?.pasta_editavel) {
-    body.processos_dir = document.getElementById("pasta-processos").value.trim();
-  }
   await fetch(apiUrl("/api/config"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },

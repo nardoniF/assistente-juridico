@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=10" />
+  <link rel="stylesheet" href="styles.css?v=11" />
 </head>
 <body>
   <div class="ambiance" aria-hidden="true"></div>
@@ -57,6 +57,7 @@
       <div class="rail-head">
         <h2>Processos</h2>
         <p id="pasta-caminho" class="micro"></p>
+        <button type="button" id="btn-escolher-pasta" class="ghost block">Escolher pasta</button>
         <input id="busca-casos" type="search" placeholder="Buscar…" autocomplete="off" />
       </div>
       <div id="lista" class="lista"></div>
@@ -388,8 +389,9 @@
         <h3>Pasta dos processos</h3>
         <p class="muted micro">Cada processo vira uma pasta com o nome das partes e o número. Dentro ficam o processo.pdf inteiro e um PDF novo para cada ação.</p>
         <label>Diretório
-          <input id="pasta-processos" type="text" placeholder="/Users/…/Processos" />
+          <input id="pasta-processos" type="text" placeholder="Nenhuma pasta escolhida" readonly />
         </label>
+        <button type="button" id="btn-escolher-pasta-ajustes" class="ghost">Escolher pasta</button>
         <p id="pasta-nota" class="muted micro"></p>
         <h3>Guarda dos arquivos</h3>
         <p class="muted micro">O PDF fica na pasta deste xThemis até você excluir o processo. A exclusão fica registrada fora da pasta, com data e número, sem cópia do PDF.</p>
@@ -443,6 +445,6 @@
   </dialog>
 
   <script src="config.js"></script>
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>
