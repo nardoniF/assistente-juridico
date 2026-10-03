@@ -151,6 +151,21 @@ def save_config(data: dict) -> None:
     CONFIG.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+_NOMES_FALSOS = {
+    "reclamante",
+    "reclamado",
+    "reclamada",
+    "parte",
+    "autor",
+    "autora",
+    "reu",
+    "re",
+    "requerente",
+    "requerido",
+    "requerida",
+}
+
+
 def slug(text: str, max_len: int = 60) -> str:
     text = unicodedata.normalize("NFKD", text or "")
     text = "".join(c for c in text if not unicodedata.combining(c))
@@ -158,17 +173,56 @@ def slug(text: str, max_len: int = 60) -> str:
     return (text or "parte")[:max_len]
 
 
+def parte_real(nome: str) -> str:
+    """Nome digitado ou lido no PDF. Rótulo genérico (Reclamante, Réu) não conta."""
+    n = re.sub(r"\s+", " ", (nome or "").strip())
+    token = slug(n).lower() if n else ""
+    if not token or token in _NOMES_FALSOS or len(token) < 3:
+        return ""
+    return n
+
+
 def folder_name(reclamante: str, reclamado: str, numero: str) -> str:
-    n = re.sub(r"[^\d\.\-]", "", numero or "sem-numero")
-    return f"{slug(reclamante)}_x_{slug(reclamado)}_{n}"
+    n = re.sub(r"[^\d\.\-]", "", numero or "sem-numero") or "sem-numero"
+    left = slug(parte_real(reclamante)) if parte_real(reclamante) else ""
+    right = slug(parte_real(reclamado)) if parte_real(reclamado) else ""
+    if left and right:
+        return f"{left}_x_{right}_{n}"
+    if left or right:
+        return f"{left or right}_{n}"
+    return f"processo_{n}"
+
+
+def preservar_nomes(destino: dict, anterior: dict) -> None:
+    """Não deixa uma releitura do PDF apagar o nome que a advogada gravou."""
+    for key in ("reclamante", "reclamado"):
+        real = parte_real((anterior or {}).get(key) or "")
+        if real:
+            destino[key] = real
+        elif not parte_real((destino or {}).get(key) or ""):
+            destino[key] = ""
+
+
+def rename_case(case: Path, reclamante: str, reclamado: str, numero: str) -> Path:
+    """A pasta passa a ter o nome das partes. Sem nome real, fica onde está."""
+    if not parte_real(reclamante) and not parte_real(reclamado):
+        return case
+    novo = folder_name(reclamante, reclamado, numero)
+    if novo == case.name:
+        return case
+    dest = PROCESSOS / novo
+    if dest.exists():
+        return case
+    case.rename(dest)
+    return dest
 
 
 def copy_into_case(src: Path, meta: dict) -> Path:
     """Cria (ou reusa) a pasta do processo e grava/sobrepoe sempre o mesmo processo.pdf."""
     ensure_dirs()
     dest_dir = PROCESSOS / folder_name(
-        meta.get("reclamante") or "Reclamante",
-        meta.get("reclamado") or "Reclamado",
+        meta.get("reclamante") or "",
+        meta.get("reclamado") or "",
         meta.get("numero") or "processo",
     )
     dest_dir.mkdir(parents=True, exist_ok=True)

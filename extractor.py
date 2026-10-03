@@ -204,28 +204,59 @@ def _score_page(text: str) -> tuple[int, list[str]]:
     return score, sorted(set(hits))
 
 
+_ATIVO = (
+    r"RECLAMANTE|AUTOR(?:A)?|REQUERENTE|EXEQUENTE|APELANTE|"
+    r"EMBARGANTE|AGRAVANTE|IMPETRANTE|POLO\s+ATIVO"
+)
+_PASSIVO = (
+    r"RECLAMADO|R[ÉE]U|REQUERID[OA]|EXECUTAD[OA]|APELAD[OA]|"
+    r"EMBARGAD[OA]|AGRAVAD[OA]|IMPETRAD[OA]|POLO\s+PASSIVO"
+)
+
+
+def _limpa_parte(texto: str) -> str:
+    linha = (texto or "").split("\n")[0]
+    linha = re.split(
+        r"\b(?:ADVOGADO|ADVOGADA|ADV|CPF|CNPJ|OAB|PERITO)\b",
+        linha,
+        maxsplit=1,
+        flags=re.I,
+    )[0]
+    linha = re.sub(r"\s+", " ", linha).strip(" \t.;:-")
+    if len(linha) > 120:
+        linha = linha[:120].rsplit(" ", 1)[0].strip()
+    if re.fullmatch(
+        r"(?:RECLAMANTE|RECLAMADO|AUTOR|AUTORA|R[ÉE]U|REQUERENTE|REQUERIDO|REQUERIDA|PARTE)",
+        linha,
+        flags=re.I,
+    ):
+        return ""
+    return linha
+
+
+def _acha_parte(blob: str, labels: str) -> str:
+    m = re.search(rf"\b(?:{labels})\s*[:\-]\s*(.+)", blob, flags=re.I)
+    if not m:
+        m = re.search(rf"\b(?:{labels})\s*\n+\s*(.+)", blob, flags=re.I)
+    return _limpa_parte(m.group(1)) if m else ""
+
+
 def extract_cover_meta(doc: fitz.Document) -> dict:
-    first = doc[0].get_text() if doc.page_count else ""
+    paginas = [
+        doc[i].get_text() or ""
+        for i in range(min(3, doc.page_count))
+    ]
+    first = paginas[0] if paginas else ""
     md = doc.metadata or {}
+    blob = "\n".join(paginas)
+    if md.get("subject"):
+        blob += "\n" + str(md["subject"])
     numero = ""
-    m = re.search(r"\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}", first)
+    m = re.search(r"\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}", blob)
     if m:
         numero = m.group(0)
-    reclamante = ""
-    reclamado = ""
-    rm = re.search(r"RECLAMANTE:\s*(.+)", first)
-    if rm:
-        reclamante = rm.group(1).split("ADVOGADO")[0].strip(" \n;")
-    rd = re.search(r"RECLAMADO:\s*(.+)", first)
-    if rd:
-        reclamado = rd.group(1).split("ADVOGADO")[0].split("PERITO")[0].strip(" \n;")
-    if not reclamante and md.get("subject"):
-        sm = re.search(r"RECLAMANTE:\s*([^;]+)", md["subject"])
-        if sm:
-            reclamante = sm.group(1).strip()
-        sm = re.search(r"RECLAMADO:\s*([^;]+)", md["subject"])
-        if sm:
-            reclamado = sm.group(1).strip()
+    reclamante = _acha_parte(blob, _ATIVO)
+    reclamado = _acha_parte(blob, _PASSIVO)
     valor = ""
     vm = re.search(r"Valor da causa:\s*R\$\s*([\d\.\,]+)", first)
     if vm:
@@ -236,8 +267,8 @@ def extract_cover_meta(doc: fitz.Document) -> dict:
         autuacao = am.group(1)
     return {
         "numero": numero,
-        "reclamante": reclamante or "Reclamante",
-        "reclamado": reclamado or "Reclamado",
+        "reclamante": reclamante,
+        "reclamado": reclamado,
         "valor_causa": valor,
         "autuacao": autuacao,
         "titulo": md.get("title") or "",
