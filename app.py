@@ -515,25 +515,49 @@ def reabrir_peca(case_id: str = Form(...), tipo: str = Form(...)):
     return {"ok": True, "estado_pecas": estado}
 
 
+LIMITE_PDF = 400 * 1024 * 1024
+FILA_PDF = 25 * 1024 * 1024
+
+
+async def _receber_pdf(arquivo: UploadFile, dest: Path) -> int:
+    """Grava o PDF em disco, em blocos. Não segura o arquivo inteiro na memória."""
+    total = 0
+    try:
+        with dest.open("wb") as out:
+            while True:
+                bloco = await arquivo.read(1024 * 1024)
+                if not bloco:
+                    break
+                total += len(bloco)
+                if total > LIMITE_PDF:
+                    raise HTTPException(400, "Este PDF passa de 400 MB.")
+                out.write(bloco)
+    except HTTPException:
+        if dest.exists():
+            dest.unlink()
+        raise
+    if total < 100:
+        if dest.exists():
+            dest.unlink()
+        raise HTTPException(400, "Arquivo vazio.")
+    return total
+
+
 @app.post("/api/importar")
 async def importar(request: Request, arquivo: UploadFile = File(...)):
     """Novo processo (ou mesmo número): copia PDF → pasta nomeada → processo.pdf único."""
     organizer.ensure_dirs()
     tmp = organizer.HOME_APP / "_upload.pdf"
-    raw = await arquivo.read()
-    if len(raw) < 100:
-        raise HTTPException(400, "Arquivo vazio.")
-    if len(raw) > 80 * 1024 * 1024:
-        raise HTTPException(400, "PDF grande demais para o plano gratuito (máx. ~80 MB).")
-    if len(raw) > 25 * 1024 * 1024:
+    total = await _receber_pdf(arquivo, tmp)
+    if total > FILA_PDF:
         job = secrets.token_hex(8)
         uid = _uid(request)
+        path = organizer.HOME_APP / f"_job_{job}.pdf"
+        tmp.replace(path)
         JOBS[job] = {"status": "lendo"}
 
-        def _fila(raw=raw, uid=uid, job=job):
-            path = organizer.HOME_APP / f"_job_{job}.pdf"
+        def _fila(path=path, uid=uid, job=job):
             try:
-                path.write_bytes(raw)
                 JOBS[job] = {"status": "ok", "result": _salvar_import(path, uid)}
             except Exception as e:
                 JOBS[job] = {"status": "erro", "detail": str(e)[:400]}
@@ -543,7 +567,6 @@ async def importar(request: Request, arquivo: UploadFile = File(...)):
 
         threading.Thread(target=_fila, daemon=True).start()
         return {"ok": True, "job": job, "fila": True, "aviso": "PDF grande entrou na fila. A leitura continua em segundo plano."}
-    tmp.write_bytes(raw)
     try:
         return _salvar_import(tmp, _uid(request))
     finally:
@@ -588,14 +611,9 @@ async def atualizar_processo(case_id: str = Form(...), arquivo: UploadFile = Fil
     except Exception:
         raise HTTPException(404, "Processo não encontrado.")
 
-    raw = await arquivo.read()
-    if len(raw) < 100:
-        raise HTTPException(400, "Arquivo vazio.")
-    if len(raw) > 80 * 1024 * 1024:
-        raise HTTPException(400, "PDF grande demais (máx. ~80 MB).")
-
-    tmp = organizer.HOME_APP / "_upload_update.pdf"
-    tmp.write_bytes(raw)
+    raw_path = organizer.HOME_APP / "_upload_update.pdf"
+    await _receber_pdf(arquivo, raw_path)
+    tmp = raw_path
     try:
         data = extractor.extract_process(tmp)
         meta = data.get("meta") or {}
@@ -637,12 +655,9 @@ async def juntar_paginas(case_id: str = Form(...), arquivo: UploadFile = File(..
     base_pdf = case / "processo.pdf"
     if not base_pdf.exists():
         raise HTTPException(400, "Este processo ainda não tem processo.pdf.")
-    raw = await arquivo.read()
-    if len(raw) < 100:
-        raise HTTPException(400, "Arquivo vazio.")
     extra = organizer.HOME_APP / "_paginas.pdf"
     merged = case / "_processo_junto.pdf"
-    extra.write_bytes(raw)
+    await _receber_pdf(arquivo, extra)
     try:
         import fitz
 
