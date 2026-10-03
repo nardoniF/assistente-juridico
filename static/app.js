@@ -288,6 +288,17 @@ async function refreshConfig() {
   else if (configCache.model === "gpt-4.1-mini") preset.value = "openai_mini";
   else if (configCache.model === "gemini-2.5-flash") preset.value = "google_flash";
   else preset.value = "groq_free";
+  const iaLocal = lerIaLocal();
+  if (
+    iaLocal &&
+    iaLocal.api_key &&
+    iaLocal.preset &&
+    iaLocal.preset !== "groq_free" &&
+    preset.value === "groq_free"
+  ) {
+    preset.value = iaLocal.preset;
+    if (iaLocal.model) document.getElementById("api-model").value = iaLocal.model;
+  }
 }
 
 function filesLabel(c) {
@@ -1331,9 +1342,45 @@ document.getElementById("preset").addEventListener("change", async (ev) => {
   }
 });
 
+function lerIaLocal() {
+  try {
+    const data = JSON.parse(localStorage.getItem("harvey_ia") || "null");
+    return data && typeof data === "object" ? data : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function gravarIaLocal(parcial) {
+  const atual = lerIaLocal() || {};
+  const prox = { ...atual, ...parcial };
+  if (!prox.api_key) delete prox.api_key;
+  localStorage.setItem("harvey_ia", JSON.stringify(prox));
+}
+
+async function restaurarIaNoServidor() {
+  const salvo = lerIaLocal();
+  if (!salvo || (!salvo.api_key && !salvo.preset)) return;
+  const body = {
+    preset: salvo.preset,
+    model: salvo.model,
+    escritorio: salvo.escritorio || "",
+    advogada: salvo.advogada || "",
+    oab: salvo.oab || "",
+  };
+  if (salvo.api_key) body.api_key = salvo.api_key;
+  await fetch(apiUrl("/api/config"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 document.getElementById("salvar-ajustes").onclick = async (ev) => {
   ev.preventDefault();
-  const key = document.getElementById("api-key").value.trim();
+  const digitada = document.getElementById("api-key").value.trim();
+  const salvo = lerIaLocal() || {};
+  const chave = digitada && !digitada.startsWith("•") ? digitada : salvo.api_key || "";
   const body = {
     preset: document.getElementById("preset").value,
     model: document.getElementById("api-model").value,
@@ -1341,19 +1388,26 @@ document.getElementById("salvar-ajustes").onclick = async (ev) => {
     advogada: document.getElementById("advogada").value.trim(),
     oab: document.getElementById("oab").value.trim(),
   };
-  if (key && !key.startsWith("•")) body.api_key = key;
-  await fetch(apiUrl("/api/config"), {
+  if (chave) body.api_key = chave;
+  gravarIaLocal({ ...body, api_key: chave });
+  const r = await fetch(apiUrl("/api/config"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   ajustes.close();
+  if (!r.ok) {
+    toast("Guardei a IA neste computador. O servidor não confirmou.");
+    return;
+  }
   refreshConfig();
-  toast("Ajustes salvos.");
+  toast("Ajustes salvos. A IA fica neste computador.");
 };
 
-refreshConfig();
-refreshCasos();
+restaurarIaNoServidor().finally(() => {
+  refreshConfig();
+  refreshCasos();
+});
 
 let camadaAtual = { capa: "", sentenca: "", provas: "" };
 

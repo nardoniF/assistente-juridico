@@ -1,9 +1,13 @@
 """Contas simples: cada advogada vê os próprios processos."""
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import json
+import os
 import secrets
+import time
 from pathlib import Path
 
 from organizer import HOME_APP, ensure_dirs
@@ -118,6 +122,54 @@ def remover_convidado(convidado_id: str) -> None:
     _save(CONVIDADOS, [x for x in itens if x.get("id") != convidado_id])
 
 
+def _segredo() -> bytes:
+    bruto = (
+        os.environ.get("SESSION_SECRET")
+        or os.environ.get("SITE_PASSWORD")
+        or os.environ.get("GROQ_API_KEY")
+        or os.environ.get("API_KEY")
+        or ""
+    ).strip()
+    return bruto.encode()
+
+
+def _token_assinado(user: dict) -> str:
+    corpo = json.dumps(
+        {
+            "id": user["id"],
+            "nome": user["nome"],
+            "exp": int(time.time()) + 60 * 60 * 24 * 120,
+        },
+        separators=(",", ":"),
+    ).encode()
+    sig = hmac.new(_segredo(), corpo, hashlib.sha256).hexdigest()
+    bloco = base64.urlsafe_b64encode(corpo).decode().rstrip("=")
+    return bloco + "." + sig
+
+
+def _ler_token_assinado(token: str) -> dict | None:
+    segredo = _segredo()
+    if not segredo or "." not in (token or ""):
+        return None
+    bloco, sig = token.rsplit(".", 1)
+    try:
+        corpo = base64.urlsafe_b64decode(bloco + "=" * (-len(bloco) % 4))
+    except Exception:
+        return None
+    esperado = hmac.new(segredo, corpo, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, esperado):
+        return None
+    try:
+        data = json.loads(corpo.decode())
+    except Exception:
+        return None
+    if int(data.get("exp") or 0) < int(time.time()):
+        return None
+    if not data.get("id"):
+        return None
+    return {"id": data["id"], "nome": data.get("nome") or ""}
+
+
 def entrar(nome: str, senha: str, *, criar: bool = False) -> dict:
     nome = (nome or "").strip()
     senha = senha or ""
@@ -156,7 +208,7 @@ def entrar(nome: str, senha: str, *, criar: bool = False) -> dict:
             _save(CONVIDADOS, itens)
     else:
         raise ValueError("Conta não encontrada. Peça para criar o acesso.")
-    token = secrets.token_urlsafe(24)
+    token = _token_assinado(user) if _segredo() else secrets.token_urlsafe(24)
     sessions = _load(SESSIONS, {})
     sessions[token] = {"id": user["id"], "nome": user["nome"]}
     _save(SESSIONS, sessions)
@@ -184,4 +236,7 @@ def user_from_request(request) -> dict | None:
     if not token:
         return None
     sessions = _load(SESSIONS, {})
-    return sessions.get(token)
+    achou = sessions.get(token)
+    if achou:
+        return achou
+    return _ler_token_assinado(token)
