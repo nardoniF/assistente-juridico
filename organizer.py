@@ -198,7 +198,22 @@ def parte_real(nome: str) -> str:
     if not token or token in _NOMES_FALSOS or len(token) < 3:
         return ""
     baixo = n.lower()
-    if any(marca in baixo for marca in (" art.", " art ", "§", "cpc", "clt", "com base", "pressupost")):
+    if any(
+        marca in baixo
+        for marca in (
+            " art.",
+            " art ",
+            "§",
+            "cpc",
+            "clt",
+            "com base",
+            "pressupost",
+            "não consta",
+            "nao consta",
+            "não identific",
+            "nao identific",
+        )
+    ):
         return ""
     if n[:1].islower() or len(n.split()) > 8:
         return ""

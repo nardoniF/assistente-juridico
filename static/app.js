@@ -539,7 +539,7 @@ function pareceNome(valor) {
   const s = String(valor || "").replace(/\s+/g, " ").trim();
   if (!s || s.length > 80) return "";
   const baixo = s.toLowerCase();
-  if (/\bart\.?|§|cpc|clt|com base|pressupost|fls?\./i.test(baixo)) return "";
+  if (/\bart\.?|§|cpc|clt|com base|pressupost|fls?\.|n[aã]o consta|n[aã]o identific/i.test(baixo)) return "";
   if (/^[a-záàâãéêíóôõúç]/.test(s)) return "";
   const palavras = s.split(" ");
   if (palavras.length > 8) return "";
@@ -1040,7 +1040,11 @@ document.querySelectorAll("#comando button[data-tipo]").forEach((btn) => {
       if (instrucoes && learnFlag() === "1") {
         document.getElementById("instrucoes-extra").value = "";
       }
+      if (data.id) selected.id = data.id;
+      if (data.pasta) selected.path = data.pasta;
       await syncSelected();
+      const fresco = allCasos.find((c) => c.id === selected.id);
+      if (fresco) selectCase(fresco);
       await espelharCaso(selected.id, [dx, pf]);
       toast(`Peça pronta: ${dx} · ${pf}`);
     } catch (e) {

@@ -223,11 +223,18 @@ def _limpa_parte(texto: str) -> str:
         maxsplit=1,
         flags=re.I,
     )[0]
+    linha = re.split(
+        r",?\s+\b(?:representad[oa]|representante|rep\.\s*por|assistid[oa]|menor(?:\s+imp[uú]bere)?)\b",
+        linha,
+        maxsplit=1,
+        flags=re.I,
+    )[0]
     linha = re.sub(r"\s+", " ", linha).strip(" \t.;:-")
     if len(linha) > 80:
         return ""
     if re.fullmatch(
-        r"(?:RECLAMANTE|RECLAMADO|AUTOR|AUTORA|R[ÉE]U|REQUERENTE|REQUERIDO|REQUERIDA|PARTE)",
+        r"(?:RECLAMANTE|RECLAMAD[OA]|AUTOR|AUTORA|R[ÉE]U|REQUERENTE|REQUERID[OA]|"
+        r"EXEQUENTE|EXECUTAD[OA]|PARTE)",
         linha,
         flags=re.I,
     ):
@@ -259,6 +266,10 @@ def _parece_nome(linha: str) -> bool:
             "pressupost",
             "fls.",
             "folha",
+            "não consta",
+            "nao consta",
+            "não identific",
+            "nao identific",
         )
     ):
         return False
@@ -279,10 +290,39 @@ def _parece_nome(linha: str) -> bool:
 
 
 def _acha_parte(blob: str, labels: str) -> str:
-    m = re.search(rf"\b(?:{labels})\s*[:\-]\s*(.+)", blob, flags=re.I)
-    if not m:
-        m = re.search(rf"\b(?:{labels})\s*\n+\s*(.+)", blob, flags=re.I)
-    return _limpa_parte(m.group(1)) if m else ""
+    padrao = rf"\b(?:{labels})(?:\s*/\s*(?:{labels}))*\s*[:\-]\s*(.+)"
+    for m in re.finditer(padrao, blob or "", flags=re.I):
+        nome = _limpa_parte(m.group(1))
+        if nome:
+            return nome
+    for m in re.finditer(rf"\b(?:{labels})\s*\n+\s*(.+)", blob or "", flags=re.I):
+        nome = _limpa_parte(m.group(1))
+        if nome:
+            return nome
+    return ""
+
+
+def partes_no_texto(texto: str) -> tuple[str, str]:
+    """Nome curto depois de Exequente/Requerente e Executado/Requerido."""
+    return _acha_parte(texto, _ATIVO), _acha_parte(texto, _PASSIVO)
+
+
+def completar_partes(meta: dict, paginas: list[str]) -> None:
+    if meta.get("reclamante") and meta.get("reclamado"):
+        return
+    blocos = []
+    for i, trecho in enumerate(paginas):
+        if i < 40 or re.search(
+            r"EXEQUENTE|EXECUTAD|REQUERENTE|REQUERID|RECLAMANTE|RECLAMAD",
+            trecho or "",
+            flags=re.I,
+        ):
+            blocos.append(trecho)
+    ativo, passivo = partes_no_texto("\n".join(blocos))
+    if ativo and not meta.get("reclamante"):
+        meta["reclamante"] = ativo
+    if passivo and not meta.get("reclamado"):
+        meta["reclamado"] = passivo
 
 
 def extract_cover_meta(doc: fitz.Document) -> dict:
@@ -581,6 +621,7 @@ def extract_process(pdf_path: Path, max_chars: int = 550_000) -> dict:
 
         cruzamento = build_cruzamento(pages, sent_idx, pay_idx)
         sections.insert(1, cruzamento_texto(cruzamento))
+        completar_partes(meta, pages)
 
         blob = "\n".join(sections)
         truncated = fora_total > 0
