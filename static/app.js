@@ -267,37 +267,39 @@ async function refreshConfig() {
       "Escolher pasta abre a janela do Mac. Cada processo vira uma subpasta ali, com o processo.pdf e um PDF por ação.";
   }
   document.getElementById("pasta-mini").textContent = configCache.has_key
-    ? "xThemis · IA pronta · " + (configCache.provider_label || configCache.provider || "")
-    : "Configure a IA em Ajustes (Gemini Pro recomendado)";
+    ? "xThemis · " + (configCache.provider_label || configCache.provider || "IA do perfil")
+    : "Abra Ajustes e grave GPT ou Gemini neste perfil";
   document.getElementById("custo-info").textContent = configCache.custo_estimado || "";
   document.getElementById("escritorio").value = configCache.escritorio || "";
   document.getElementById("advogada").value = configCache.advogada || "";
   document.getElementById("oab").value = configCache.oab || "";
   const campoChave = document.getElementById("api-key");
   campoChave.disabled = false;
-  campoChave.placeholder = configCache.key_from_env
-    ? "Cole a chave paga (sk-... ou AIza...). O teste grátis continua no servidor."
-    : configCache.has_key
-      ? configCache.masked_key
-      : "AIza... / sk-... / gsk_...";
+  campoChave.value = "";
+  campoChave.placeholder = configCache.has_key
+    ? "Chave gravada " + (configCache.masked_key || "")
+    : "sk-... ou AIza...";
   const preset = document.getElementById("preset");
-  if (configCache.model === "openai/gpt-oss-120b" || configCache.provider === "groq")
-    preset.value = "groq_free";
-  else if (configCache.model === "gemini-2.5-pro") preset.value = "google_pro";
-  else if (configCache.model === "gemini-2.5-flash-lite") preset.value = "google_lite";
-  else if (configCache.model === "gpt-4.1-mini") preset.value = "openai_mini";
-  else if (configCache.model === "gemini-2.5-flash") preset.value = "google_flash";
-  else preset.value = "groq_free";
+  const modelo = configCache.model || "";
+  const prov = configCache.provider || "";
+  if (modelo === "gemini-2.5-pro" || (prov === "google" && modelo.includes("pro"))) preset.value = "google_pro";
+  else if (modelo === "gemini-2.5-flash") preset.value = "google_flash";
+  else if (modelo === "gpt-4.1-mini" || prov === "openai") preset.value = "openai_mini";
+  else preset.value = "openai_mini";
   const iaLocal = lerIaLocal();
-  if (
-    iaLocal &&
-    iaLocal.api_key &&
-    iaLocal.preset &&
-    iaLocal.preset !== "groq_free" &&
-    preset.value === "groq_free"
-  ) {
-    preset.value = iaLocal.preset;
+  if (iaLocal && iaLocal.api_key && iaLocal.preset && iaLocal.preset !== "groq_free" && !configCache.has_key) {
+    if ([...preset.options].some((opt) => opt.value === iaLocal.preset)) preset.value = iaLocal.preset;
     if (iaLocal.model) document.getElementById("api-model").value = iaLocal.model;
+  }
+  const preview = document.getElementById("logo-preview");
+  if (preview) {
+    if (configCache.has_logo) {
+      preview.src = apiUrl("/api/perfil/logo") + "?t=" + Date.now();
+      preview.hidden = false;
+    } else if (!logoPendente) {
+      preview.hidden = true;
+      preview.removeAttribute("src");
+    }
   }
 }
 
@@ -1079,6 +1081,7 @@ document.getElementById("btn-refinar").onclick = async () => {
   fd.append("case_id", selected.id);
   fd.append("feedback", feedback);
   fd.append("salvar_aprendizado", learnFlag());
+  fd.append("persona", document.getElementById("persona").value);
   try {
     const r = await fetch(apiUrl("/api/refinar"), { method: "POST", body: fd });
     const data = await r.json();
@@ -1250,9 +1253,26 @@ function renderConvidados(lista) {
   });
 }
 
+function renderUsuarios(lista) {
+  const box = document.getElementById("usuarios-lista");
+  if (!box) return;
+  box.innerHTML = "";
+  if (!lista.length) {
+    box.innerHTML = "<li class='micro'>Nenhum usuário além de você.</li>";
+    return;
+  }
+  lista.forEach((item) => {
+    const li = document.createElement("li");
+    const papel = item.acesso === "dono" ? "administrador" : "teste, sem cobrança";
+    const ia = item.tem_chave ? item.ia || "IA gravada" : "ainda sem chave";
+    li.textContent = `${item.nome} · ${papel} · ${ia}`;
+    box.appendChild(li);
+  });
+}
+
 async function carregarConvidados() {
   const box = document.getElementById("convidados-box");
-  const r = await fetch(apiUrl("/api/convidados"));
+  const r = await fetch(apiUrl("/api/usuarios"));
   if (r.status === 403) {
     if (box) box.hidden = true;
     return;
@@ -1260,7 +1280,7 @@ async function carregarConvidados() {
   const data = await r.json();
   if (!r.ok) return;
   if (box) box.hidden = false;
-  renderConvidados(data.convidados || []);
+  renderUsuarios(data.usuarios || []);
   const rex = await fetch(apiUrl("/api/exclusoes"));
   const lista = document.getElementById("exclusoes-lista");
   if (!lista || !rex.ok) return;
@@ -1290,22 +1310,47 @@ async function removerConvidado(id) {
   renderConvidados(data.convidados || []);
 }
 
-document.getElementById("btn-convidado").onclick = async () => {
-  const r = await fetch(apiUrl("/api/convidados"), {
+document.getElementById("btn-novo-usuario").onclick = async () => {
+  const r = await fetch(apiUrl("/api/usuarios"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      nome: document.getElementById("convidado-nome").value.trim(),
-      nota: document.getElementById("convidado-nota").value.trim(),
+      nome: document.getElementById("novo-usuario-nome").value.trim(),
+      senha: document.getElementById("novo-usuario-senha").value,
     }),
   });
   const data = await r.json();
-  if (!r.ok) return toast(data.detail || "Não incluí.");
-  document.getElementById("convidado-nome").value = "";
-  document.getElementById("convidado-nota").value = "";
-  renderConvidados(data.convidados || []);
-  toast("Convidado na lista gratuita.");
+  if (!r.ok) return toast(data.detail || "Não criei o usuário.");
+  document.getElementById("novo-usuario-nome").value = "";
+  document.getElementById("novo-usuario-senha").value = "";
+  renderUsuarios(data.usuarios || []);
+  toast("Usuário criado, sem cobrança. Ele entra, abre Ajustes, assina GPT ou Gemini e cola a chave.");
 };
+
+let logoPendente = null;
+document.getElementById("logo-escritorio").addEventListener("change", () => {
+  const file = document.getElementById("logo-escritorio").files?.[0];
+  if (!file) return;
+  if (file.size > 350000) {
+    toast("Logo grande demais. Use um PNG ou JPG pequeno.");
+    document.getElementById("logo-escritorio").value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const data = String(reader.result || "");
+    const m = data.match(/^data:(image\/(?:png|jpeg));base64,(.+)$/);
+    if (!m) {
+      toast("Use PNG ou JPG.");
+      return;
+    }
+    logoPendente = { tipo: m[1], b64: m[2] };
+    const preview = document.getElementById("logo-preview");
+    preview.src = data;
+    preview.hidden = false;
+  };
+  reader.readAsDataURL(file);
+});
 
 document.getElementById("prazo-tipo").onchange = () => {
   document.getElementById("prazo-outro-wrap").hidden =
@@ -1361,6 +1406,7 @@ function gravarIaLocal(parcial) {
 async function restaurarIaNoServidor() {
   const salvo = lerIaLocal();
   if (!salvo || (!salvo.api_key && !salvo.preset)) return;
+  if (salvo.preset === "groq_free" || String(salvo.api_key || "").startsWith("gsk_")) return;
   const body = {
     preset: salvo.preset,
     model: salvo.model,
@@ -1369,6 +1415,10 @@ async function restaurarIaNoServidor() {
     oab: salvo.oab || "",
   };
   if (salvo.api_key) body.api_key = salvo.api_key;
+  if (salvo.logo_b64) {
+    body.logo_b64 = salvo.logo_b64;
+    body.logo_tipo = salvo.logo_tipo || "image/png";
+  }
   await fetch(apiUrl("/api/config"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1389,7 +1439,16 @@ document.getElementById("salvar-ajustes").onclick = async (ev) => {
     oab: document.getElementById("oab").value.trim(),
   };
   if (chave) body.api_key = chave;
-  gravarIaLocal({ ...body, api_key: chave });
+  if (logoPendente) {
+    body.logo_b64 = logoPendente.b64;
+    body.logo_tipo = logoPendente.tipo;
+  }
+  gravarIaLocal({
+    ...body,
+    api_key: chave,
+    logo_b64: body.logo_b64 || (lerIaLocal() || {}).logo_b64,
+    logo_tipo: body.logo_tipo || (lerIaLocal() || {}).logo_tipo,
+  });
   const r = await fetch(apiUrl("/api/config"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },

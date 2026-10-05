@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import io
 import json
 import os
@@ -76,6 +77,43 @@ def _uid(request: Request) -> str | None:
 def _nome(request: Request) -> str:
     user = getattr(request.state, "user", None) or {}
     return user.get("nome") or "local"
+
+
+def _ia_do_pedido(request: Request) -> dict | None:
+    uid = _uid(request)
+    if not uid:
+        return None
+    perfil = contas.perfil_ia(uid)
+    if not perfil.get("api_key"):
+        return {
+            "provider": perfil.get("provider") or "",
+            "api_key": "",
+            "model": perfil.get("model") or "",
+            "base_url": perfil.get("base_url") or "",
+            "provider_label": perfil.get("provider_label") or "",
+        }
+    return perfil
+
+
+def _cabecalho_pdf(request: Request) -> dict:
+    uid = _uid(request)
+    if uid:
+        perfil = contas.perfil_ia(uid)
+        return {
+            "escritorio": perfil.get("escritorio") or "",
+            "advogada": perfil.get("advogada") or "",
+            "oab": perfil.get("oab") or "",
+            "logo_b64": perfil.get("logo_b64") or "",
+            "logo_tipo": perfil.get("logo_tipo") or "",
+        }
+    cfg = organizer.load_config()
+    return {
+        "escritorio": cfg.get("escritorio") or "",
+        "advogada": cfg.get("advogada") or "",
+        "oab": cfg.get("oab") or "",
+        "logo_b64": "",
+        "logo_tipo": "",
+    }
 
 ACTION_MAP = {
     "resumo": ("Resumo do processo", prompts.prompt_resumo, "Resumo_Processo"),
@@ -168,60 +206,86 @@ def config_js():
     return Response(body, media_type="application/javascript")
 
 
-@app.get("/api/config")
-def get_config():
-    cfg = organizer.load_config()
-    key = cfg.get("api_key") or cfg.get("openai_api_key") or ""
-    masked = ("••••" + key[-4:]) if len(key) >= 4 else ""
+_PRESETS_PERFIL = {k: v for k, v in PRESETS.items() if k != "groq_free"}
+
+
+def _resposta_config(request: Request, origem: dict, *, do_perfil: bool) -> dict:
+    key = (origem.get("api_key") or "").strip()
+    if do_perfil:
+        key = ""
+        has_key = bool(origem.get("has_key"))
+        masked = origem.get("masked_key") or ""
+    else:
+        has_key = bool(key)
+        masked = ("••••" + key[-4:]) if len(key) >= 4 else ""
+    uid = _uid(request)
+    acesso = contas.acesso(uid) if uid else ""
     return {
         "product": PRODUCT,
-        "has_key": bool(key.strip()),
+        "has_key": has_key,
         "masked_key": masked,
-        "key_from_env": bool(cfg.get("key_from_env")),
-        "provider": cfg.get("provider") or DEFAULT_CONFIG["provider"],
-        "provider_label": cfg.get("provider_label") or DEFAULT_CONFIG["provider_label"],
-        "model": cfg.get("model") or cfg.get("openai_model") or DEFAULT_CONFIG["model"],
-        "base_url": cfg.get("base_url") or DEFAULT_CONFIG["base_url"],
-        "presets": PRESETS,
+        "key_from_env": False if do_perfil else bool(origem.get("key_from_env")),
+        "provider": origem.get("provider") or "",
+        "provider_label": origem.get("provider_label") or "",
+        "model": origem.get("model") or "",
+        "base_url": origem.get("base_url") or "",
+        "presets": _PRESETS_PERFIL,
         "processos_dir": str(organizer.PROCESSOS),
         "aprendizado_global": str(memory.GLOBAL_FILE),
         "web_mode": web_mode(),
         "pasta_editavel": not web_mode(),
-        "escritorio": cfg.get("escritorio") or "",
-        "oab": cfg.get("oab") or "",
-        "advogada": cfg.get("advogada") or "",
-        "custo_estimado": (
-            "Tudo gratuito no plano padrão: hosting free + Groq free. "
-            "Gemini/OpenAI só se você colar chave paga."
-        ),
+        "escritorio": origem.get("escritorio") or "",
+        "oab": origem.get("oab") or "",
+        "advogada": origem.get("advogada") or "",
+        "has_logo": bool(origem.get("has_logo")),
+        "eh_admin": acesso == "dono",
+        "acesso": acesso,
+        "custo_estimado": "Cada perfil usa a própria chave, GPT ou Gemini. Não há plano de IA grátis.",
     }
 
 
+@app.get("/api/config")
+def get_config(request: Request):
+    uid = _uid(request)
+    if uid:
+        return _resposta_config(request, contas.perfil_publico(uid), do_perfil=True)
+    cfg = organizer.load_config()
+    return _resposta_config(request, cfg, do_perfil=False)
+
+
 @app.post("/api/config")
-def set_config(payload: dict):
+def set_config(request: Request, payload: dict):
+    if payload.get("preset") == "groq_free" or payload.get("provider") == "groq":
+        raise HTTPException(400, "Escolha GPT ou Gemini. Este perfil não usa IA grátis.")
     allowed = {}
     if "api_key" in payload:
         allowed["api_key"] = (payload.get("api_key") or "").strip()
     elif "openai_api_key" in payload:
         allowed["api_key"] = (payload.get("openai_api_key") or "").strip()
     if "model" in payload:
-        allowed["model"] = payload.get("model") or DEFAULT_CONFIG["model"]
+        allowed["model"] = payload.get("model") or ""
     if "provider" in payload:
         allowed["provider"] = payload.get("provider")
     if "provider_label" in payload:
         allowed["provider_label"] = payload.get("provider_label")
     if "base_url" in payload:
-        allowed["base_url"] = (payload.get("base_url") or DEFAULT_CONFIG["base_url"]).rstrip("/")
+        allowed["base_url"] = (payload.get("base_url") or "").rstrip("/")
     for campo in ("escritorio", "oab", "advogada"):
         if campo in payload:
             allowed[campo] = (payload.get(campo) or "").strip()
+    logo = payload.get("logo_b64") or ""
+    if logo:
+        if len(logo) > 500_000:
+            raise HTTPException(400, "Logo grande demais. Use um PNG ou JPG pequeno.")
+        allowed["logo_b64"] = logo
+        allowed["logo_tipo"] = payload.get("logo_tipo") or "image/png"
     if "processos_dir" in payload and not web_mode():
         try:
             allowed["processos_dir"] = organizer.usar_pasta(payload.get("processos_dir") or "")
         except ValueError as e:
             raise HTTPException(400, str(e))
-    if "preset" in payload and payload["preset"] in PRESETS:
-        p = PRESETS[payload["preset"]]
+    if "preset" in payload and payload["preset"] in _PRESETS_PERFIL:
+        p = _PRESETS_PERFIL[payload["preset"]]
         allowed.update(
             {
                 "provider": p["provider"],
@@ -230,8 +294,47 @@ def set_config(payload: dict):
                 "base_url": p["base_url"],
             }
         )
+    uid = _uid(request)
+    if uid:
+        contas.salvar_perfil(uid, _nome(request), allowed)
+        return get_config(request)
     organizer.save_config(allowed)
-    return get_config()
+    return get_config(request)
+
+
+@app.get("/api/usuarios")
+def usuarios(request: Request):
+    if not _pode_convidar(request):
+        raise HTTPException(403, "Só o administrador vê os usuários.")
+    return {"usuarios": contas.listar_usuarios()}
+
+
+@app.post("/api/usuarios")
+def novo_usuario(request: Request, payload: dict):
+    if not _pode_convidar(request):
+        raise HTTPException(403, "Só o administrador cria usuário.")
+    try:
+        item = contas.criar_usuario(payload.get("nome") or "", payload.get("senha") or "")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "usuario": item, "usuarios": contas.listar_usuarios()}
+
+
+@app.get("/api/perfil/logo")
+def logo_perfil(request: Request):
+    uid = _uid(request)
+    if not uid:
+        raise HTTPException(404, "Sem logo.")
+    perfil = contas.perfil_ia(uid)
+    bruto = perfil.get("logo_b64") or ""
+    if not bruto:
+        raise HTTPException(404, "Sem logo.")
+    try:
+        raw = base64.b64decode(bruto)
+    except Exception:
+        raise HTTPException(400, "Logo inválido.")
+    tipo = perfil.get("logo_tipo") or "image/png"
+    return Response(raw, media_type=tipo)
 
 
 def _adotar_nomes(case: Path, texto: str) -> Path:
@@ -802,9 +905,13 @@ def _build_user_prompt(
                 "No pedido personalizado, escreva no diálogo o que a IA deve fazer "
                 "(ou use um aprendizado já salvo neste processo).",
             )
-        return prompts.append_instrucoes(prompts.prompt_personalizado(meta, texto, learned) + cruz, "")
+        return prompts.aplicar_posicao(
+            prompts.append_instrucoes(prompts.prompt_personalizado(meta, texto, learned) + cruz, ""),
+            persona,
+            area,
+        )
     base = prompt_fn(meta, texto) + cruz
-    return prompts.append_instrucoes(base, learned)
+    return prompts.aplicar_posicao(prompts.append_instrucoes(base, learned), persona, area)
 
 
 def _persist_peca(
@@ -818,8 +925,9 @@ def _persist_peca(
     segundos: float | None = None,
     refine: bool = False,
     texto_anterior: str | None = None,
+    cabecalho: dict | None = None,
 ) -> dict:
-    files = docx_out.save_peca(body, case, base_name, title=titulo)
+    files = docx_out.save_peca(body, case, base_name, title=titulo, cabecalho=cabecalho)
     prev = memory.load_ultima(case) or {}
     same = prev.get("tipo") == tipo and prev.get("base") == files["base"]
     refines = int(prev.get("refines") or 0)
@@ -932,7 +1040,11 @@ def acao(
 
     t0 = time.perf_counter()
     try:
-        body = llm.complete(prompts.system_para(area_do_processo(meta, texto)), user_prompt)
+        body = llm.complete(
+            prompts.system_para(area_do_processo(meta, texto)),
+            user_prompt,
+            cfg=_ia_do_pedido(request),
+        )
     except llm.LlmError as e:
         raise HTTPException(400, str(e))
     except Exception:
@@ -941,7 +1053,15 @@ def acao(
     segundos = round(time.perf_counter() - t0, 1)
 
     files = _persist_peca(
-        case, tipo, titulo, body, base_name, learned, segundos=segundos, refine=False
+        case,
+        tipo,
+        titulo,
+        body,
+        base_name,
+        learned,
+        segundos=segundos,
+        refine=False,
+        cabecalho=_cabecalho_pdf(request),
     )
     if files.get("pasta"):
         case = Path(files["pasta"])
@@ -997,6 +1117,7 @@ def refinar(
     case_id: str = Form(...),
     feedback: str = Form(...),
     salvar_aprendizado: str = Form("1"),
+    persona: str = Form(""),
 ):
     try:
         case = organizer.case_dir(case_id)
@@ -1048,10 +1169,17 @@ Capa/meta: {meta}
 
 {prompts.CHECKLIST_HINT}
 """
+    refine_prompt = prompts.aplicar_posicao(
+        refine_prompt, persona, area_do_processo(meta, texto_autos)
+    )
     texto_anterior = ultima.get("texto") or ""
     t0 = time.perf_counter()
     try:
-        body = llm.complete(prompts.system_para(area_do_processo(meta, texto_autos)), refine_prompt)
+        body = llm.complete(
+            prompts.system_para(area_do_processo(meta, texto_autos)),
+            refine_prompt,
+            cfg=_ia_do_pedido(request),
+        )
     except llm.LlmError as e:
         raise HTTPException(400, str(e))
     except Exception:
@@ -1069,6 +1197,7 @@ Capa/meta: {meta}
         segundos=segundos,
         refine=True,
         texto_anterior=texto_anterior,
+        cabecalho=_cabecalho_pdf(request),
     )
     if files.get("pasta"):
         case = Path(files["pasta"])

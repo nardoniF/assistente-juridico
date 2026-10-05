@@ -825,6 +825,33 @@ dialog {
   flex: 1;
 }
 
+.manual-ia {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.manual-ia p {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.manual-ia a {
+  color: var(--ink);
+}
+
+#logo-preview {
+  display: block;
+  max-height: 72px;
+  max-width: 180px;
+  margin: 8px 0;
+  background: #fff;
+  padding: 6px;
+  border-radius: 8px;
+}
+
 .ajustes-cols {
   display: grid;
   grid-template-columns: 1fr 1fr;

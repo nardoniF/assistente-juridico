@@ -82,6 +82,44 @@ def bloco_lado(persona: str, area: str) -> str:
     return "\n\nPOSIÇÃO E ÁREA\n" + "\n".join(linhas) + "\n"
 
 
+def aplicar_posicao(prompt: str, persona: str, area: str) -> str:
+    """A posição escolhida na capa manda. O modelo da peça não troca o polo."""
+    persona = (persona or "reclamada").strip()
+    trab = (area or "") == "trabalhista"
+    texto = prompt or ""
+    if persona == "juizo":
+        polo = "JUÍZO"
+        ordem = (
+            "POSIÇÃO OBRIGATÓRIA: escreva minuta de JUÍZO, neutra. "
+            "Não advogue pelo polo ativo nem pelo passivo. "
+            "Se o texto abaixo disser reclamada, reclamante, requerente ou requerido, ignore e mantenha o juízo."
+        )
+        texto = texto.replace("pela RECLAMADA", "em minuta de juízo")
+        texto = texto.replace("pelo RECLAMANTE", "em minuta de juízo")
+        texto = texto.replace("advogado da RECLAMADA", "juízo")
+    elif persona == "reclamante":
+        polo = "RECLAMANTE" if trab else "REQUERENTE"
+        ordem = (
+            f"POSIÇÃO OBRIGATÓRIA: escreva somente pelo polo ativo ({polo}). "
+            "Não redija a peça como parte contrária."
+        )
+        texto = texto.replace("pela RECLAMADA", f"pelo {polo}")
+        texto = texto.replace("pelo RECLAMANTE", f"pelo {polo}")
+        texto = texto.replace("advogado da RECLAMADA", f"advogado do {polo}")
+    else:
+        polo = "RECLAMADA" if trab else "REQUERIDO"
+        ordem = (
+            f"POSIÇÃO OBRIGATÓRIA: escreva somente pelo polo passivo ({polo}). "
+            "Não redija a peça como polo ativo."
+        )
+        if polo != "RECLAMADA":
+            texto = texto.replace("pela RECLAMADA", f"pelo {polo}")
+            texto = texto.replace("advogado da RECLAMADA", f"advogado do {polo}")
+        if not trab:
+            texto = texto.replace("pelo RECLAMANTE", "pelo REQUERENTE")
+    return ordem + "\n\n" + texto
+
+
 def system_para(area: str) -> str:
     if area == "trabalhista":
         return SYSTEM

@@ -34,8 +34,8 @@ def configured() -> bool:
     return bool(_cfg()["api_key"])
 
 
-def complete(system: str, user: str, *, temperature: float = 0.2) -> str:
-    cfg = _cfg()
+def complete(system: str, user: str, *, temperature: float = 0.2, cfg: dict | None = None) -> str:
+    cfg = cfg or _cfg()
     key = cfg["api_key"]
     model = cfg["model"]
     base = cfg["base_url"]

@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=11" />
+  <link rel="stylesheet" href="styles.css?v=12" />
 </head>
 <body>
   <div class="ambiance" aria-hidden="true"></div>
@@ -342,20 +342,24 @@
   <dialog id="ajustes">
     <form method="dialog" id="form-ajustes">
       <h2>Ajustes</h2>
-      <p class="muted">Groq gratuito fica no servidor para teste. Para analisar o processo, escolha <strong>OpenAI</strong> ou <strong>Gemini Pro</strong> e cole a chave paga.</p>
+      <p class="muted">A IA fica neste perfil. Não há plano grátis: escolha <strong>GPT</strong> ou <strong>Gemini</strong> e cole a chave do plano que você assinou.</p>
+      <div class="manual-ia">
+        <p><strong>Como assinar e pegar a chave</strong></p>
+        <p>OpenAI (GPT): entre em <a href="https://platform.openai.com/settings/organization/billing" target="_blank" rel="noopener">Billing</a>, adicione crédito, depois crie a chave em <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">API keys</a>. Ela começa com sk-.</p>
+        <p>Google (Gemini): abra <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>, crie uma chave que começa com AIza. Para uso contínuo, ative o faturamento nessa conta.</p>
+        <p>Salve. No próximo login este perfil já usa essa IA e essa chave.</p>
+      </div>
       <div class="ajustes-cols">
       <div>
       <label>Plano de IA
         <select id="preset">
-          <option value="google_pro">Gemini Pro — qualidade (pago, recomendado)</option>
-          <option value="openai_mini">OpenAI GPT-4.1 mini — pago</option>
-          <option value="google_flash">Gemini Flash — rápido</option>
-          <option value="groq_free">Groq — gratuito (teste)</option>
-          <option value="google_lite">Gemini Flash-Lite</option>
+          <option value="openai_mini">OpenAI GPT-4.1 mini</option>
+          <option value="google_pro">Google Gemini Pro</option>
+          <option value="google_flash">Google Gemini Flash</option>
         </select>
       </label>
       <label>Chave da API
-        <input id="api-key" type="password" autocomplete="off" placeholder="AIza... / sk-... / gsk_..." />
+        <input id="api-key" type="password" autocomplete="off" placeholder="sk-... ou AIza..." />
       </label>
       <label>Escritório
         <input id="escritorio" type="text" placeholder="Nome do escritório" />
@@ -366,6 +370,11 @@
       <label>OAB
         <input id="oab" type="text" placeholder="OAB/SP 000000" />
       </label>
+      <label>Logo do escritório
+        <input id="logo-escritorio" type="file" accept="image/png,image/jpeg" />
+      </label>
+      <img id="logo-preview" alt="Logo do escritório" hidden />
+      <p class="muted micro">PNG ou JPG pequeno. Entra no topo do PDF, junto com escritório, nome e OAB. O checklist interno não vai para o juiz.</p>
       <label>Modelo (avançado)
         <input id="api-model" type="text" />
       </label>
@@ -373,17 +382,18 @@
       <p id="pasta-info" class="muted micro"></p>
       </div>
       <div>
-      <div id="convidados-box">
-        <h3>Convidados</h3>
-        <p class="muted micro">Acesso gratuito para quem você incluir aqui. Os demais, quando a cobrança existir, pagam por ação: cada peça nova é uma. Refinar a mesma peça não cobra de novo.</p>
-        <ul id="convidados-lista" class="convidados-lista"></ul>
-        <label>Nome do advogado
-          <input id="convidado-nome" type="text" placeholder="Nome como vai entrar na conta" />
+      <div id="convidados-box" hidden>
+        <h3>Usuários</h3>
+        <p class="muted micro">Contas de teste, sem cobrança. Cada pessoa entra com o próprio nome, escolhe GPT ou Gemini e cola a própria chave. A peça usa a IA desse perfil.</p>
+        <ul id="usuarios-lista" class="convidados-lista"></ul>
+        <label>Nome
+          <input id="novo-usuario-nome" type="text" placeholder="Nome para entrar" autocomplete="off" />
         </label>
-        <label>Nota
-          <input id="convidado-nota" type="text" placeholder="OAB, escritório" />
+        <label>Senha inicial
+          <input id="novo-usuario-senha" type="password" placeholder="Mínimo 4 caracteres" autocomplete="new-password" />
         </label>
-        <button type="button" id="btn-convidado" class="ghost">Incluir na lista gratuita</button>
+        <button type="button" id="btn-novo-usuario" class="ghost">Criar usuário</button>
+        <p class="muted micro">Passe nome e senha. No primeiro acesso a pessoa abre Ajustes, assina o plano da IA no link acima e cola a chave. Sem isso o perfil não gera peça.</p>
       </div>
         <p class="muted micro">Cobrança por ação ainda não está ligada. O endereço público é www.xthemis.com.br. O servidor gratuito dorme sem visita e acorda no próximo acesso.</p>
         <h3>Pasta dos processos</h3>
@@ -445,6 +455,6 @@
   </dialog>
 
   <script src="config.js"></script>
-  <script src="app.js?v=13"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>

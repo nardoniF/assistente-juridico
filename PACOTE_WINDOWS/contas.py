@@ -240,3 +240,116 @@ def user_from_request(request) -> dict | None:
     if achou:
         return achou
     return _ler_token_assinado(token)
+
+
+def _usuarios() -> list:
+    dados = _load(USERS, [])
+    return dados if isinstance(dados, list) else []
+
+
+def _achar_usuario(user_id: str) -> tuple[list, dict | None]:
+    users = _usuarios()
+    for user in users:
+        if user.get("id") == user_id:
+            return users, user
+    return users, None
+
+
+def perfil_ia(user_id: str) -> dict:
+    """Chave e plano deste perfil. Não usa a Groq do servidor."""
+    _, user = _achar_usuario(user_id)
+    perfil = (user or {}).get("perfil") or {}
+    if not isinstance(perfil, dict):
+        perfil = {}
+    return {
+        "provider": (perfil.get("provider") or "").strip(),
+        "provider_label": (perfil.get("provider_label") or "").strip(),
+        "model": (perfil.get("model") or "").strip(),
+        "base_url": (perfil.get("base_url") or "").strip().rstrip("/"),
+        "api_key": (perfil.get("api_key") or "").strip(),
+        "escritorio": (perfil.get("escritorio") or "").strip(),
+        "advogada": (perfil.get("advogada") or "").strip(),
+        "oab": (perfil.get("oab") or "").strip(),
+        "logo_b64": perfil.get("logo_b64") or "",
+        "logo_tipo": (perfil.get("logo_tipo") or "").strip(),
+    }
+
+
+def perfil_publico(user_id: str) -> dict:
+    perfil = perfil_ia(user_id)
+    chave = perfil["api_key"]
+    publico = dict(perfil)
+    publico["api_key"] = ""
+    publico["has_key"] = bool(chave)
+    publico["masked_key"] = ("••••" + chave[-4:]) if len(chave) >= 4 else ""
+    publico["has_logo"] = bool(perfil.get("logo_b64"))
+    publico.pop("logo_b64", None)
+    return publico
+
+
+def salvar_perfil(user_id: str, nome: str, dados: dict) -> dict:
+    users, user = _achar_usuario(user_id)
+    if not user:
+        user = {
+            "id": user_id,
+            "nome": (nome or "").strip() or "perfil",
+            "salt": "",
+            "hash": "",
+            "acesso": "dono" if not users else "cortesia",
+            "perfil": {},
+        }
+        users.append(user)
+    perfil = dict(user.get("perfil") or {})
+    for campo in ("provider", "provider_label", "model", "base_url", "escritorio", "advogada", "oab", "logo_tipo"):
+        if campo in dados and dados.get(campo) is not None:
+            perfil[campo] = str(dados.get(campo) or "").strip()
+    chave = (dados.get("api_key") or "").strip()
+    if chave:
+        perfil["api_key"] = chave
+    logo = dados.get("logo_b64") or ""
+    if logo:
+        perfil["logo_b64"] = logo
+        perfil["logo_tipo"] = (dados.get("logo_tipo") or "image/png").strip()
+    user["perfil"] = perfil
+    _save(USERS, users)
+    return perfil_publico(user_id)
+
+
+def listar_usuarios() -> list[dict]:
+    users = _usuarios()
+    saida = []
+    for user in users:
+        perfil = user.get("perfil") or {}
+        saida.append(
+            {
+                "id": user.get("id") or "",
+                "nome": user.get("nome") or "",
+                "acesso": _acesso(user, users),
+                "ia": (perfil.get("provider_label") or perfil.get("provider") or ""),
+                "tem_chave": bool((perfil.get("api_key") or "").strip()),
+            }
+        )
+    return saida
+
+
+def criar_usuario(nome: str, senha: str) -> dict:
+    """Conta de teste, sem cobrança. Não devolve token: o administrador continua logado."""
+    nome = (nome or "").strip()
+    senha = senha or ""
+    if len(nome) < 2 or len(senha) < 4:
+        raise ValueError("Nome e senha (mínimo 4 caracteres).")
+    users = _usuarios()
+    if any((u.get("nome") or "").lower() == nome.lower() for u in users):
+        raise ValueError("Já existe usuário com esse nome.")
+    salt = secrets.token_hex(8)
+    user = {
+        "id": secrets.token_hex(8),
+        "nome": nome,
+        "salt": salt,
+        "hash": _hash(senha, salt),
+        "acesso": "cortesia",
+        "perfil": {},
+    }
+    users.append(user)
+    _save(USERS, users)
+    return {"id": user["id"], "nome": nome, "acesso": "cortesia"}
