@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import html as html_lib
 import re
 from pathlib import Path
@@ -199,15 +200,41 @@ body {
 """
 
 
-def markdown_to_pdf(text: str, dest: Path, title: str | None = None) -> Path:
+_CHECKLIST = re.compile(r"(?is)\n*CHECKLIST FOREN\w*\b.*\Z")
+_AUDITORIA = re.compile(
+    r"(?is)\n*AUDITORIA DOCUMENTAL\b.*?(?=\n[A-ZÁÉÍÓÚÃÕÇ][A-ZÁÉÍÓÚÃÕÇ0-9 \-]{8,}\n|\nCHECKLIST|\Z)"
+)
+
+
+def limpar_para_juiz(text: str) -> str:
+    """Tira auditoria e checklist. Isso fica no Word; o PDF vai ao juiz."""
+    limpo = _CHECKLIST.sub("", text or "")
+    limpo = _AUDITORIA.sub("\n", limpo)
+    limpo = re.sub(r"\n{3,}", "\n\n", limpo)
+    return limpo.strip()
+
+
+def markdown_to_pdf(
+    text: str,
+    dest: Path,
+    title: str | None = None,
+    cabecalho: dict | None = None,
+) -> Path:
     """PDF forense A4: justificado, margens padrão, seções e numeração."""
     dest.parent.mkdir(parents=True, exist_ok=True)
-    story_html = _text_to_story_html(text, title=title)
+    capa = cabecalho or {}
+    tem_capa = bool(
+        (capa.get("logo_b64") or "").strip()
+        or (capa.get("escritorio") or "").strip()
+        or (capa.get("advogada") or "").strip()
+        or (capa.get("oab") or "").strip()
+    )
+    story_html = _text_to_story_html(limpar_para_juiz(text), title=title)
     story = fitz.Story(html=story_html, user_css=_PDF_CSS)
 
     mediabox = fitz.paper_rect("a4")
-    # Margens alinhadas ao CSS (Story place usa o retângulo útil)
-    where = mediabox + (85, 70, -56, -62)  # L T R B em pontos (aprox. 3/2.5/2/2.2 cm)
+    topo = 118 if tem_capa else 70
+    where = mediabox + (85, topo, -56, -62)  # L T R B em pontos (aprox. 3/2.5/2/2.2 cm)
 
     writer = fitz.DocumentWriter(str(dest))
     more = True
@@ -218,10 +245,38 @@ def markdown_to_pdf(text: str, dest: Path, title: str | None = None) -> Path:
         writer.end_page()
     writer.close()
 
-    # Numeração de páginas (rodapé central)
+    # Logo e qualificação no topo; numeração no rodapé
     doc = fitz.open(dest)
     total = doc.page_count
+    logo = b""
+    if tem_capa and capa.get("logo_b64"):
+        try:
+            logo = base64.b64decode(capa["logo_b64"])
+        except Exception:
+            logo = b""
+    linha = " · ".join(
+        p
+        for p in (
+            (capa.get("escritorio") or "").strip(),
+            (capa.get("advogada") or "").strip(),
+            (capa.get("oab") or "").strip(),
+        )
+        if p
+    )
     for i, page in enumerate(doc, start=1):
+        if i == 1 and logo:
+            try:
+                page.insert_image(fitz.Rect(85, 28, 175, 100), stream=logo, keep_proportion=True)
+            except Exception:
+                pass
+        if i == 1 and linha:
+            page.insert_text(
+                (188 if logo else 85, 62),
+                linha[:140],
+                fontname="times-bold",
+                fontsize=11,
+                color=(0.12, 0.12, 0.12),
+            )
         label = f"{i}"
         if total > 1:
             label = f"{i} / {total}"
@@ -237,7 +292,13 @@ def markdown_to_pdf(text: str, dest: Path, title: str | None = None) -> Path:
     return dest
 
 
-def save_peca(text: str, case_dir: Path, base_name: str, title: str | None = None) -> dict:
+def save_peca(
+    text: str,
+    case_dir: Path,
+    base_name: str,
+    title: str | None = None,
+    cabecalho: dict | None = None,
+) -> dict:
     """Grava Word (editar) + PDF (enviar) na pasta do processo."""
     base = base_name
     if base.lower().endswith(".docx"):
@@ -247,7 +308,7 @@ def save_peca(text: str, case_dir: Path, base_name: str, title: str | None = Non
     docx_path = case_dir / f"{base}.docx"
     pdf_path = case_dir / f"{base}.pdf"
     markdown_to_docx(text, docx_path, title=title)
-    markdown_to_pdf(text, pdf_path, title=title)
+    markdown_to_pdf(text, pdf_path, title=title, cabecalho=cabecalho)
     return {"docx": docx_path.name, "pdf": pdf_path.name, "base": base}
 
 
@@ -292,10 +353,10 @@ def publicar_pdf_pje(case_dir: Path, info: dict, numero: str) -> str:
     advogada = (cfg.get("advogada") or "").strip()
     oab = (cfg.get("oab") or "").strip()
     escritorio = (cfg.get("escritorio") or "").strip()
-    meta["author"] = advogada or "Harvey.ai"
-    meta["creator"] = " ".join(p for p in (advogada, oab, escritorio, "Harvey.ai") if p)
-    meta["producer"] = "Harvey.ai"
-    meta["keywords"] = f"OAB {oab}" if oab else "Harvey.ai"
+    meta["author"] = advogada or "xThemis"
+    meta["creator"] = " ".join(p for p in (advogada, oab, escritorio, "xThemis") if p)
+    meta["producer"] = "xThemis"
+    meta["keywords"] = f"OAB {oab}" if oab else "xThemis"
     doc.set_metadata(meta)
     doc.saveIncr()
     doc.close()

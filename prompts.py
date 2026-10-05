@@ -82,6 +82,44 @@ def bloco_lado(persona: str, area: str) -> str:
     return "\n\nPOSIÇÃO E ÁREA\n" + "\n".join(linhas) + "\n"
 
 
+def aplicar_posicao(prompt: str, persona: str, area: str) -> str:
+    """A posição escolhida na capa manda. O modelo da peça não troca o polo."""
+    persona = (persona or "reclamada").strip()
+    trab = (area or "") == "trabalhista"
+    texto = prompt or ""
+    if persona == "juizo":
+        polo = "JUÍZO"
+        ordem = (
+            "POSIÇÃO OBRIGATÓRIA: escreva minuta de JUÍZO, neutra. "
+            "Não advogue pelo polo ativo nem pelo passivo. "
+            "Se o texto abaixo disser reclamada, reclamante, requerente ou requerido, ignore e mantenha o juízo."
+        )
+        texto = texto.replace("pela RECLAMADA", "em minuta de juízo")
+        texto = texto.replace("pelo RECLAMANTE", "em minuta de juízo")
+        texto = texto.replace("advogado da RECLAMADA", "juízo")
+    elif persona == "reclamante":
+        polo = "RECLAMANTE" if trab else "REQUERENTE"
+        ordem = (
+            f"POSIÇÃO OBRIGATÓRIA: escreva somente pelo polo ativo ({polo}). "
+            "Não redija a peça como parte contrária."
+        )
+        texto = texto.replace("pela RECLAMADA", f"pelo {polo}")
+        texto = texto.replace("pelo RECLAMANTE", f"pelo {polo}")
+        texto = texto.replace("advogado da RECLAMADA", f"advogado do {polo}")
+    else:
+        polo = "RECLAMADA" if trab else "REQUERIDO"
+        ordem = (
+            f"POSIÇÃO OBRIGATÓRIA: escreva somente pelo polo passivo ({polo}). "
+            "Não redija a peça como polo ativo."
+        )
+        if polo != "RECLAMADA":
+            texto = texto.replace("pela RECLAMADA", f"pelo {polo}")
+            texto = texto.replace("advogado da RECLAMADA", f"advogado do {polo}")
+        if not trab:
+            texto = texto.replace("pelo RECLAMANTE", "pelo REQUERENTE")
+    return ordem + "\n\n" + texto
+
+
 def system_para(area: str) -> str:
     if area == "trabalhista":
         return SYSTEM
@@ -311,6 +349,103 @@ Contexto dos autos:
 {texto}
 
 Use valores e pedidos apenas se constarem do extrato; demais campos deixe entre colchetes [PREENCHER].
+"""
+
+
+def prompt_tutela(meta: dict, texto: str) -> str:
+    return f"""Redija pedido de TUTELA DE URGÊNCIA pelo lado escolhido no roteiro.
+
+Requisitos do art. 300 do CPC, usados no processo do trabalho: probabilidade do direito e perigo de dano ou risco ao resultado útil. Só descreva fato que esteja nos autos. Se o perigo ou o direito não constar do extrato, escreva "NÃO CONSTA DO EXTRATO LIDO" nesse ponto e não invente liminar já deferida.
+
+Capa:
+{meta}
+
+Autos:
+{texto}
+"""
+
+
+def prompt_execucao(meta: dict, texto: str) -> str:
+    return f"""Redija petição de EXECUÇÃO / CUMPRIMENTO DE SENTENÇA pelo lado escolhido no roteiro.
+
+Use só o título que estiver no extrato (sentença, acordo ou cálculos). Não invente valor, rubrica nem conta. O que não estiver nos autos fica como [PREENCHER] e com a frase "NÃO CONSTA DO EXTRATO LIDO".
+
+Capa:
+{meta}
+
+Autos:
+{texto}
+
+{AUDITORIA_BLOCK}
+"""
+
+
+def prompt_embargos_execucao(meta: dict, texto: str) -> str:
+    return f"""Redija EMBARGOS À EXECUÇÃO pelo lado escolhido no roteiro, no prazo do art. 884 da CLT.
+
+Impugne excesso de execução só com comprovante, sentença ou cálculo que esteja no extrato. Peça dedução do que já foi pago. Não invente garantia do juízo nem penhora.
+
+Capa:
+{meta}
+
+Autos:
+{texto}
+
+{AUDITORIA_BLOCK}
+"""
+
+
+def prompt_agravo_peticao(meta: dict, texto: str) -> str:
+    return f"""Redija AGRAVO DE PETIÇÃO (art. 897, "a", da CLT) pelo lado escolhido no roteiro, contra decisão na execução.
+
+Delimite a matéria e as alterações pedidas. Não reabra o que a sentença de conhecimento já julgou, salvo se o extrato mostrar que isso ainda está em discussão. Se a decisão agravada não estiver no extrato, escreva "NÃO CONSTA DO EXTRATO LIDO" e não invente o teor.
+
+Capa:
+{meta}
+
+Autos:
+{texto}
+
+{AUDITORIA_BLOCK}
+"""
+
+
+def prompt_agravo_instrumento(meta: dict, texto: str) -> str:
+    return f"""Redija AGRAVO DE INSTRUMENTO pelo lado escolhido no roteiro.
+
+Se a área for trabalhista, é o agravo do art. 897, "b", da CLT: decisão que nega seguimento a recurso. Não use o rol do art. 1.015 do CPC quando os autos forem de reclamação trabalhista. Se a decisão que trancou o recurso não estiver no extrato, escreva "NÃO CONSTA DO EXTRATO LIDO" e não invente o despacho.
+
+Capa:
+{meta}
+
+Autos:
+{texto}
+"""
+
+
+def prompt_revista(meta: dict, texto: str) -> str:
+    return f"""Redija RECURSO DE REVISTA (art. 896 da CLT) pelo lado escolhido no roteiro.
+
+Só cabe se houver acórdão de Tribunal Regional no extrato. Se não houver, diga isso logo no início e não escreva a revista como se o acórdão existisse. Não invente súmula, precedente nem transcrição. Súmula só com o enunciado da biblioteca anexada.
+
+Capa:
+{meta}
+
+Autos:
+{texto}
+"""
+
+
+def prompt_quesitos(meta: dict, texto: str) -> str:
+    return f"""Redija QUESITOS ao perito pelo lado escolhido no roteiro.
+
+Lista objetiva, numerada, só sobre ponto que já esteja nos autos (função, local, agente, documento, laudo). Não invente medição, EPI nem conclusão técnica. Onde faltar o fato, escreva "NÃO CONSTA DO EXTRATO LIDO".
+
+Capa:
+{meta}
+
+Autos:
+{texto}
 """
 
 
