@@ -434,17 +434,17 @@ def sair(request: Request):
 
 
 def _pode_convidar(request: Request) -> bool:
-    if not contas.tem_usuarios():
-        return True
     user = getattr(request.state, "user", None) or {}
-    return bool(user.get("id")) and contas.acesso(user["id"]) == "dono"
+    if not user.get("id"):
+        return False
+    return contas.garantir_dono(user) == "dono"
 
 
 @app.get("/api/eu")
 def eu(request: Request):
     user = getattr(request.state, "user", None)
     if user and user.get("id"):
-        nivel = contas.acesso(user["id"])
+        nivel = contas.garantir_dono(user)
     elif not contas.tem_usuarios():
         nivel = "dono"
     else:
