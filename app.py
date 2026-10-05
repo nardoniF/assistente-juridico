@@ -1111,6 +1111,62 @@ def acao(
     }
 
 
+@app.get("/api/conversa")
+def ler_conversa(case_id: str):
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    return {"ok": True, "mensagens": memory.load_conversa(case)}
+
+
+@app.post("/api/conversa/limpar")
+def limpar_conversa(case_id: str = Form(...)):
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    memory.gravar_conversa(case, [])
+    return {"ok": True, "mensagens": []}
+
+
+@app.post("/api/conversar")
+def conversar(
+    request: Request,
+    case_id: str = Form(...),
+    pergunta: str = Form(...),
+    prazo: str = Form(""),
+):
+    """Pergunta sobre o processo. Não cria peça e não sobrepõe arquivo."""
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    texto_pergunta = (pergunta or "").strip()
+    if not texto_pergunta:
+        raise HTTPException(400, "Escreva a pergunta.")
+    if len(texto_pergunta) > 4000:
+        raise HTTPException(400, "Pergunta longa demais. Encurte um pouco.")
+    data = _load_or_extract(case, refresh=False)
+    meta = data.get("meta") or {}
+    historico = memory.load_conversa(case)
+    user_prompt = prompts.prompt_conversa(
+        meta, data.get("texto") or "", historico, texto_pergunta, prazo
+    )
+    try:
+        resposta = llm.complete(prompts.SYSTEM_CONVERSA, user_prompt, cfg=_ia_do_pedido(request))
+    except llm.LlmError as e:
+        raise HTTPException(400, str(e))
+    except Exception:
+        traceback.print_exc()
+        raise HTTPException(500, "Falha ao conversar com o modelo.")
+    historico.append({"papel": "advogada", "texto": texto_pergunta})
+    historico.append({"papel": "xthemis", "texto": resposta})
+    mensagens = memory.gravar_conversa(case, historico)
+    memory.auditar(case, _nome(request), "conversar", texto_pergunta[:180])
+    return {"ok": True, "resposta": resposta, "mensagens": mensagens}
+
+
 @app.post("/api/refinar")
 def refinar(
     request: Request,

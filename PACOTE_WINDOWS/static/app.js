@@ -221,7 +221,7 @@ function setBusy(on, text, stageKey) {
   clearInterval(busyTimer);
   busyTimer = null;
   busy.hidden = !on;
-  document.querySelectorAll("#comando button[data-tipo], #btn-refinar").forEach((b) => {
+  document.querySelectorAll("#comando button[data-tipo], #btn-refinar, #btn-conversar").forEach((b) => {
     b.disabled = on;
   });
   if (!on) {
@@ -424,6 +424,7 @@ function selectCase(c) {
   renderIndice(m);
   renderExtrato(m);
   carregarCamadas();
+  carregarConversa();
   applyLock(c.estado_pecas);
   renderLista(c.id);
 }
@@ -1068,6 +1069,77 @@ document.querySelectorAll("#comando button[data-tipo]").forEach((btn) => {
   });
 });
 
+function pintarConversa(itens) {
+  const box = document.getElementById("bate-papo");
+  const limpar = document.getElementById("btn-limpar-conversa");
+  if (!box) return;
+  const lista = itens || [];
+  if (!lista.length) {
+    box.hidden = true;
+    box.innerHTML = "";
+    if (limpar) limpar.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  if (limpar) limpar.hidden = false;
+  box.innerHTML = lista
+    .map((item) => {
+      const quem = item.papel === "advogada" ? "Você" : "xThemis";
+      const classe = item.papel === "advogada" ? "advogada" : "xthemis";
+      return `<p class="${classe}"><strong>${quem}</strong><br>${escapeHtml(item.texto || "")}</p>`;
+    })
+    .join("");
+  box.scrollTop = box.scrollHeight;
+}
+
+async function carregarConversa() {
+  if (!selected) return;
+  try {
+    const r = await fetch(apiUrl("/api/conversa?case_id=" + encodeURIComponent(selected.id)));
+    const data = await r.json();
+    if (!r.ok) return;
+    pintarConversa(data.mensagens || []);
+  } catch (e) {
+    pintarConversa([]);
+  }
+}
+
+document.getElementById("btn-conversar").onclick = async () => {
+  if (!selected) {
+    toast("Abra um processo antes de conversar.");
+    return;
+  }
+  const pergunta = document.getElementById("instrucoes-extra").value.trim();
+  if (!pergunta) {
+    toast("Escreva a pergunta. Conversar não cria peça.");
+    return;
+  }
+  setBusy(true, "Consultando o processo…");
+  const fd = new FormData();
+  fd.append("case_id", selected.id);
+  fd.append("pergunta", pergunta);
+  fd.append("prazo", document.getElementById("prazo").value.trim());
+  try {
+    const r = await fetch(apiUrl("/api/conversar"), { method: "POST", body: fd });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || "falha");
+    document.getElementById("instrucoes-extra").value = "";
+    pintarConversa(data.mensagens || []);
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    setBusy(false);
+  }
+};
+
+document.getElementById("btn-limpar-conversa").onclick = async () => {
+  if (!selected) return;
+  const fd = new FormData();
+  fd.append("case_id", selected.id);
+  await fetch(apiUrl("/api/conversa/limpar"), { method: "POST", body: fd });
+  pintarConversa([]);
+};
+
 document.getElementById("btn-refinar").onclick = async () => {
   if (!selected) return;
   const feedback = document.getElementById("instrucoes-extra").value.trim();
@@ -1581,6 +1653,7 @@ const I18N = {
       ".dialogue h3": "Diálogo com a IA",
       ".dialogue .switch span": "Guardar aprendizado",
       "#btn-prazo": "Calcular prazo",
+      "#btn-conversar": "Só conversar",
       "#btn-refinar": "Refinar esta peça (sobrepoe)",
       "#btn-fechar": "Peça fechada",
       "#btn-conferir-sumulas": "Conferir jurisprudência",
@@ -1645,6 +1718,7 @@ const I18N = {
       ".dialogue h3": "Talk to the AI",
       ".dialogue .switch span": "Save what I teach it",
       "#btn-prazo": "Count the deadline",
+      "#btn-conversar": "Just talk",
       "#btn-refinar": "Refine this draft (overwrites)",
       "#btn-fechar": "Draft closed",
       "#btn-conferir-sumulas": "Check case law",

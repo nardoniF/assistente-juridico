@@ -852,6 +852,33 @@ dialog {
   border-radius: 8px;
 }
 
+.bate-papo {
+  margin-top: 14px;
+  max-height: 360px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bate-papo p {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  line-height: 1.45;
+  font-size: 14px;
+}
+.bate-papo .advogada {
+  background: rgba(255, 255, 255, 0.06);
+}
+.bate-papo .xthemis {
+  background: rgba(120, 180, 140, 0.12);
+  border: 1px solid var(--line);
+}
+.limpar-conversa {
+  margin-top: 8px;
+}
+
 .ajustes-cols {
   display: grid;
   grid-template-columns: 1fr 1fr;

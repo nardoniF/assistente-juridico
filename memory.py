@@ -138,6 +138,28 @@ def load_ultima(case: Path) -> dict | None:
         return None
 
 
+CONVERSA = "conversa.json"
+
+
+def load_conversa(case: Path) -> list:
+    path = case / CONVERSA
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [item for item in data if isinstance(item, dict) and item.get("texto")]
+
+
+def gravar_conversa(case: Path, mensagens: list) -> list:
+    corte = mensagens[-40:]
+    (case / CONVERSA).write_text(json.dumps(corte, indent=2, ensure_ascii=False), encoding="utf-8")
+    return corte
+
+
 ESTADO = "pecas_estado.json"
 
 

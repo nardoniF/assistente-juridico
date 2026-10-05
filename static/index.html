@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=12" />
+  <link rel="stylesheet" href="styles.css?v=13" />
 </head>
 <body>
   <div class="ambiance" aria-hidden="true"></div>
@@ -221,14 +221,17 @@
           <textarea
             id="instrucoes-extra"
             rows="5"
-            placeholder="Ex.: Cruze férias e 13º com o TRCT fl. 677 e o comprovante bancário fl. 679. Peça dedução/compensação…"
+            placeholder="Pergunte do processo: em que folha está isso? O prazo já correu? Conversar só responde e não cria arquivo. Para mudar uma peça já gerada, escreva o que faltou e use Refinar."
           ></textarea>
           <div class="toolbar">
-            <button type="button" id="btn-refinar" class="accent">Refinar esta peça (sobrepoe)</button>
+            <button type="button" id="btn-conversar" class="accent">Só conversar</button>
+            <button type="button" id="btn-refinar" class="ghost">Refinar esta peça (sobrepoe)</button>
             <button type="button" id="btn-fechar" class="ghost">Peça fechada</button>
             <button type="button" id="btn-conferir-sumulas" class="ghost">Conferir jurisprudência</button>
             <p class="hint" id="peca-estado">Sem peça aberta. A primeira ação cria o arquivo.</p>
           </div>
+          <div id="bate-papo" class="bate-papo" hidden></div>
+          <button type="button" id="btn-limpar-conversa" class="ghost limpar-conversa" hidden>Limpar conversa</button>
           <div id="pje-box" class="chips"></div>
           <div id="reabrir-box" class="chips"></div>
           <div id="prompts-box" class="prompts-box" hidden></div>
@@ -455,6 +458,6 @@
   </dialog>
 
   <script src="config.js"></script>
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>
