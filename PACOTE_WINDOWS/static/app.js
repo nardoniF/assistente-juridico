@@ -1335,7 +1335,7 @@ function renderUsuarios(lista) {
   }
   lista.forEach((item) => {
     const li = document.createElement("li");
-    const papel = item.acesso === "dono" ? "administrador" : "teste, sem cobrança";
+    const papel = item.acesso === "dono" ? "administrador" : "gratuito";
     const ia = item.tem_chave ? item.ia || "IA gravada" : "ainda sem chave";
     li.textContent = `${item.nome} · ${papel} · ${ia}`;
     box.appendChild(li);
@@ -1347,6 +1347,7 @@ async function carregarConvidados() {
   const r = await fetch(apiUrl("/api/usuarios"));
   if (r.status === 403) {
     if (box) box.hidden = true;
+    toast("Entre na conta de administrador para criar perfis gratuitos.");
     return;
   }
   const data = await r.json();
@@ -1396,7 +1397,7 @@ document.getElementById("btn-novo-usuario").onclick = async () => {
   document.getElementById("novo-usuario-nome").value = "";
   document.getElementById("novo-usuario-senha").value = "";
   renderUsuarios(data.usuarios || []);
-  toast("Usuário criado, sem cobrança. Ele entra, abre Ajustes, assina GPT ou Gemini e cola a chave.");
+  toast("Perfil gratuito criado: " + (data.usuario && data.usuario.nome ? data.usuario.nome : "ok") + ". Passe o nome e a senha. A pessoa entra em www.xthemis.com.br.");
 };
 
 let logoPendente = null;
@@ -1888,7 +1889,7 @@ fetch(apiUrl("/api/eu"))
   .then((r) => r.json())
   .then((eu) => {
     if (eu.nome) {
-    const extra = eu.acesso === "cortesia" ? " · gratuito" : eu.acesso === "avulso" ? " · por ação" : "";
+    const extra = eu.acesso === "dono" ? " · administrador" : eu.acesso === "cortesia" ? " · gratuito" : eu.acesso === "avulso" ? " · por ação" : "";
     document.getElementById("btn-conta").textContent = eu.nome + extra;
   }
   })

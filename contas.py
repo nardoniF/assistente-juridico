@@ -56,6 +56,33 @@ def acesso(user_id: str) -> str:
     return _acesso(found, users)
 
 
+def garantir_dono(user: dict | None) -> str:
+    """Quem já entrou e ainda não existe administrador vira o administrador geral."""
+    if not user or not user.get("id"):
+        return ""
+    users = _usuarios()
+    found = next((u for u in users if u.get("id") == user.get("id")), None)
+    tem_dono = any(_acesso(u, users) == "dono" for u in users)
+    if found and _acesso(found, users) == "dono":
+        return "dono"
+    if tem_dono:
+        return _acesso(found, users) if found else "avulso"
+    if not found:
+        found = {
+            "id": user["id"],
+            "nome": (user.get("nome") or "").strip() or "Administrador",
+            "salt": "",
+            "hash": "",
+            "acesso": "dono",
+            "perfil": {},
+        }
+        users.append(found)
+    else:
+        found["acesso"] = "dono"
+    _save(USERS, users)
+    return "dono"
+
+
 def _convidado_por_nome(nome: str) -> dict | None:
     alvo = (nome or "").strip().lower()
     for item in _load(CONVIDADOS, []):
