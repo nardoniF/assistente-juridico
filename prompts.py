@@ -120,6 +120,42 @@ def aplicar_posicao(prompt: str, persona: str, area: str) -> str:
     return ordem + "\n\n" + texto
 
 
+SYSTEM_CONVERSA = """Você responde perguntas de uma advogada sobre um processo já extraído.
+Não redige peça. Não inventa o que não está no extrato. Fala em português claro."""
+
+
+def prompt_conversa(meta: dict, texto: str, historico: list, pergunta: str, prazo: str = "") -> str:
+    linhas = []
+    for item in (historico or [])[-8:]:
+        quem = "Advogada" if item.get("papel") == "advogada" else "xThemis"
+        linhas.append(f"{quem}: {item.get('texto')}")
+    bloco = "\n".join(linhas) or "(primeira pergunta)"
+    aviso_prazo = ""
+    if (prazo or "").strip():
+        aviso_prazo = (
+            f"\nÚltimo cálculo feito na tela, só como lembrete, não é certidão: {prazo.strip()}\n"
+        )
+    return f"""A advogada quer só conversar sobre este processo. Não redija peça, petição, checklist nem cabeçalho.
+
+Responda em português, curto e direto.
+- Se ela perguntar em que folha está algo, cite a página do extrato. Se não achar, diga NÃO CONSTA DO EXTRATO LIDO.
+- Sobre prazo: não certifique tempestividade. Se a data não estiver no extrato, diga que não consta e que a ciência se confere no PJe.
+- Não invente fato, nome, data, valor nem jurisprudência.
+
+Capa:
+{meta}
+{aviso_prazo}
+Conversa até aqui:
+{bloco}
+
+Pergunta:
+{pergunta}
+
+Extrato dos autos:
+{texto}
+"""
+
+
 def system_para(area: str) -> str:
     if area == "trabalhista":
         return SYSTEM
