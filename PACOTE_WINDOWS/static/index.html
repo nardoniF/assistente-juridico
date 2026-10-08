@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=13" />
+  <link rel="stylesheet" href="styles.css?v=14" />
 </head>
 <body>
   <div class="ambiance" aria-hidden="true"></div>
@@ -87,7 +87,7 @@
           <button type="button" id="btn-segredo" class="ghost">Segredo</button>
           <button type="button" id="btn-excluir" class="ghost">Excluir processo</button>
           <button type="button" id="btn-pasta" class="ghost">Backup (ZIP)</button>
-          <button type="button" id="btn-ver-prompts" class="ghost">Prompts</button>
+          <button type="button" id="btn-ver-prompts" class="ghost">Aprendizado</button>
         </div>
       </header>
 
@@ -225,6 +225,7 @@
           ></textarea>
           <div class="toolbar">
             <button type="button" id="btn-conversar" class="accent">Só conversar</button>
+            <button type="button" id="btn-guardar-aprendizado" class="ghost">Gravar aprendizado</button>
             <button type="button" id="btn-refinar" class="ghost">Refinar esta peça (sobrepoe)</button>
             <button type="button" id="btn-fechar" class="ghost">Peça fechada</button>
             <button type="button" id="btn-conferir-sumulas" class="ghost">Conferir jurisprudência</button>
@@ -232,6 +233,12 @@
           </div>
           <div id="bate-papo" class="bate-papo" hidden></div>
           <button type="button" id="btn-limpar-conversa" class="ghost limpar-conversa" hidden>Limpar conversa</button>
+          <div id="aprendizado-vivo" class="aprendizado-vivo">
+            <p class="micro">Deste processo · arquivo <strong>Aprendizado.txt</strong> na pasta do caso.</p>
+            <ul id="aprendizado-caso"></ul>
+            <p class="micro">Global · vale nos outros processos deste perfil. Arquivo <strong>Aprendizado_global.txt</strong> na pasta que você escolheu.</p>
+            <ul id="aprendizado-global"></ul>
+          </div>
           <div id="pje-box" class="chips"></div>
           <div id="reabrir-box" class="chips"></div>
           <div id="prompts-box" class="prompts-box" hidden></div>
@@ -458,6 +465,6 @@
   </dialog>
 
   <script src="config.js"></script>
-  <script src="app.js?v=16"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>

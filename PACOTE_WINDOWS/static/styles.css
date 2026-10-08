@@ -491,6 +491,30 @@ button:disabled {
   transform: none;
 }
 
+.aprendizado-vivo {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.aprendizado-vivo ul {
+  margin: 4px 0 12px;
+  padding-left: 18px;
+}
+
+.aprendizado-vivo li {
+  margin: 4px 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.aprendizado-vivo .micro strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .prompts-box {
   margin-top: 12px;
   white-space: pre-wrap;

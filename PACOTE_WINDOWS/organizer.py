@@ -311,6 +311,8 @@ def list_cases(user_id: str | None = None) -> list[dict]:
             for p in d.iterdir()
             if p.is_file() and p.suffix.lower() in {".docx", ".pdf"} and p.name != "processo.pdf"
         )
+        if (d / "Aprendizado.txt").is_file():
+            docs = ["Aprendizado.txt", *docs]
         has_processo = (d / "processo.pdf").exists()
         prompts_n = 0
         pp = d / "prompts_caso.json"

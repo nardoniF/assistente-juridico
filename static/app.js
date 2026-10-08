@@ -176,6 +176,18 @@ async function espelharCaso(caseId, arquivos) {
   }
 }
 
+async function espelharGlobal() {
+  const raiz = await pastaComPermissao();
+  if (!raiz) return false;
+  const r = await fetch(apiUrl("/api/aprendizado-global"));
+  if (!r.ok) return false;
+  const file = await raiz.getFileHandle("Aprendizado_global.txt", { create: true });
+  const w = await file.createWritable();
+  await w.write(await r.blob());
+  await w.close();
+  return true;
+}
+
 function apiUrl(path) {
   const base = ((window.HARVEY && window.HARVEY.apiBase) || "").replace(/\/$/, "");
   return base + path;
@@ -221,7 +233,7 @@ function setBusy(on, text, stageKey) {
   clearInterval(busyTimer);
   busyTimer = null;
   busy.hidden = !on;
-  document.querySelectorAll("#comando button[data-tipo], #btn-refinar, #btn-conversar").forEach((b) => {
+  document.querySelectorAll("#comando button[data-tipo], #btn-refinar, #btn-conversar, #btn-guardar-aprendizado").forEach((b) => {
     b.disabled = on;
   });
   if (!on) {
@@ -255,8 +267,7 @@ async function refreshConfig() {
     "Dados: " +
     configCache.processos_dir +
     (configCache.has_key ? " · chave OK" : " · ainda sem chave");
-  document.getElementById("pasta-info").textContent =
-    pasta + " · aprendizado: " + (configCache.aprendizado_global || "");
+  document.getElementById("pasta-info").textContent = pasta;
   const caminho = document.getElementById("pasta-caminho");
   if (caminho && !pastaHandle) caminho.textContent = "Nenhuma pasta escolhida neste Mac";
   const campoPasta = document.getElementById("pasta-processos");
@@ -425,6 +436,7 @@ function selectCase(c) {
   renderExtrato(m);
   carregarCamadas();
   carregarConversa();
+  carregarAprendizado();
   applyLock(c.estado_pecas);
   renderLista(c.id);
 }
@@ -1059,8 +1071,16 @@ document.querySelectorAll("#comando button[data-tipo]").forEach((btn) => {
       await syncSelected();
       const fresco = allCasos.find((c) => c.id === selected.id);
       if (fresco) selectCase(fresco);
-      await espelharCaso(selected.id, [dx, pf]);
-      toast(`Peça pronta: ${dx} · ${pf}`);
+      const copiar = [dx, pf];
+      if (data.aprendizado_arquivo) copiar.push(data.aprendizado_arquivo);
+      await espelharCaso(selected.id, copiar);
+      if (data.aprendizado_arquivo) await espelharGlobal();
+      await carregarAprendizado();
+      toast(
+        data.aprendizado_arquivo
+          ? `Peça pronta: ${dx} · ${pf}. Aprendizado.txt na pasta do processo.`
+          : `Peça pronta: ${dx} · ${pf}`
+      );
     } catch (e) {
       toast(e.message);
     } finally {
@@ -1162,7 +1182,16 @@ document.getElementById("btn-refinar").onclick = async () => {
     showResult(data, " (refinado)", { antes: data.texto_anterior || antes });
     if (learnFlag() === "1") document.getElementById("instrucoes-extra").value = "";
     await syncSelected();
-    toast("Mesma peça sobrescrita · veja o diff.");
+    const copiar = [data.arquivo_docx, data.arquivo_pdf];
+    if (data.aprendizado_arquivo) copiar.push(data.aprendizado_arquivo);
+    await espelharCaso(selected.id, copiar);
+    if (data.aprendizado_arquivo) await espelharGlobal();
+    await carregarAprendizado();
+    toast(
+      data.aprendizado_arquivo
+        ? "Mesma peça sobrescrita. Aprendizado.txt atualizado na pasta."
+        : "Mesma peça sobrescrita · veja o diff."
+    );
   } catch (e) {
     toast(e.message);
   } finally {
@@ -1181,6 +1210,79 @@ document.getElementById("btn-toggle-diff")?.addEventListener("click", () => {
 });
 
 document.getElementById("btn-fechar").onclick = () => fecharPeca();
+
+function linhasAprendizado(itens) {
+  if (!itens || !itens.length) return "<li class='micro'>Nada gravado ainda.</li>";
+  return itens.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+}
+
+function itensGlobais(g) {
+  const todos = (g && g.todos) || [];
+  if (todos.length) return todos;
+  const flat = [];
+  Object.values((g && g.por_tipo) || {}).forEach((arr) => {
+    (arr || []).forEach((item) => {
+      if (!flat.includes(item)) flat.push(item);
+    });
+  });
+  return flat;
+}
+
+async function carregarAprendizado() {
+  const doCaso = document.getElementById("aprendizado-caso");
+  const global = document.getElementById("aprendizado-global");
+  if (!doCaso || !global) return;
+  if (!selected) {
+    doCaso.innerHTML = linhasAprendizado([]);
+    global.innerHTML = linhasAprendizado([]);
+    return;
+  }
+  try {
+    const r = await fetch(apiUrl("/api/prompts?case_id=" + encodeURIComponent(selected.id)));
+    const data = await r.json();
+    if (!r.ok) return;
+    doCaso.innerHTML = linhasAprendizado((data.caso && data.caso.geral) || []);
+    global.innerHTML = linhasAprendizado(itensGlobais(data.global));
+  } catch (e) {
+    doCaso.innerHTML = linhasAprendizado([]);
+  }
+}
+
+document.getElementById("btn-guardar-aprendizado").onclick = async () => {
+  if (!selected) {
+    toast("Abra um processo antes de gravar o aprendizado.");
+    return;
+  }
+  const texto = document.getElementById("instrucoes-extra").value.trim();
+  if (!texto) {
+    toast("Escreva o que deve ficar gravado para este processo e para os outros.");
+    return;
+  }
+  setBusy(true, "Gravando aprendizado…");
+  try {
+    const r = await fetch(apiUrl("/api/prompts"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        case_id: selected.id,
+        texto,
+        tipo: lastTipo || "geral",
+        also_global: true,
+      }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || "falha");
+    document.getElementById("instrucoes-extra").value = "";
+    await carregarAprendizado();
+    await espelharCaso(selected.id, ["Aprendizado.txt"]);
+    await espelharGlobal();
+    toast("Aprendizado.txt na pasta deste processo. Aprendizado_global.txt na pasta geral.");
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    setBusy(false);
+  }
+};
 
 document.getElementById("btn-ver-prompts").onclick = async () => {
   if (!selected) return;
@@ -1212,6 +1314,9 @@ document.getElementById("btn-ver-prompts").onclick = async () => {
     .reverse()
     .map((x) => `${x.quando || ""} · ${x.usuario || ""} · ${x.acao || ""} ${x.detalhe || ""}`)
     .join("\n") || "(ainda sem registro)";
+  const vivo = document.getElementById("aprendizado-vivo");
+  if (vivo) vivo.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  await carregarAprendizado();
   promptsBox.hidden = false;
   promptsBox.textContent =
     "O QUE MUDOU\n" +
@@ -1648,7 +1753,8 @@ const I18N = {
       "#btn-segredo": "Segredo",
       "#btn-excluir": "Excluir processo",
       "#btn-pasta": "Backup (ZIP)",
-      "#btn-ver-prompts": "Prompts",
+      "#btn-ver-prompts": "Aprendizado",
+      "#btn-guardar-aprendizado": "Gravar aprendizado",
       "#empty-state .empty-kicker": "Como funciona",
       "#empty-state h3": "Um processo. Uma peça por ação.",
       ".dialogue h3": "Diálogo com a IA",
@@ -1713,7 +1819,8 @@ const I18N = {
       "#btn-segredo": "Confidential",
       "#btn-excluir": "Delete case",
       "#btn-pasta": "Backup (ZIP)",
-      "#btn-ver-prompts": "Prompts",
+      "#btn-ver-prompts": "What it learned",
+      "#btn-guardar-aprendizado": "Save what I teach it",
       "#empty-state .empty-kicker": "How it works",
       "#empty-state h3": "One case. One draft per action.",
       ".dialogue h3": "Talk to the AI",

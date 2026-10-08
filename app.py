@@ -880,8 +880,9 @@ def _build_user_prompt(
     persona: str = "",
     area: str = "",
     prazo: str = "",
+    user_id: str = "",
 ) -> str:
-    learned = memory.combined_instructions(case, tipo, extra)
+    learned = memory.combined_instructions(case, tipo, extra, user_id)
     area = area or area_do_processo(meta, texto)
     meta["area"] = area
     rows = ((meta.get("extrato") or {}).get("verbas")) or meta.get("cruzamento") or []
@@ -1026,17 +1027,26 @@ def acao(
 
     extra = (instrucoes_extra or "").strip()
     learn = salvar_aprendizado not in ("0", "false", "False")
+    uid = _uid(request) or ""
     if extra and learn:
-        memory.append_learning(case, tipo, extra, also_global=True)
+        memory.append_learning(case, tipo, extra, also_global=True, user_id=uid)
 
     data = _load_or_extract(case, refresh=True)
     meta = data.get("meta") or {}
     texto = data.get("texto") or ""
     titulo, _, base_name = ACTION_MAP[tipo]
     user_prompt = _build_user_prompt(
-        case, tipo, meta, texto, "" if learn else extra, persona, area_do_processo(meta, texto), prazo
+        case,
+        tipo,
+        meta,
+        texto,
+        "" if learn else extra,
+        persona,
+        area_do_processo(meta, texto),
+        prazo,
+        uid,
     )
-    learned = memory.combined_instructions(case, tipo, "" if learn else extra)
+    learned = memory.combined_instructions(case, tipo, "" if learn else extra, uid)
 
     t0 = time.perf_counter()
     try:
@@ -1089,8 +1099,9 @@ def acao(
             "id": case_id,
             "pasta": pasta,
             "arquivos": files,
-            "prompts_usados": learned,
-            "sugestao_arquivo": files["docx"],
+        "prompts_usados": learned,
+        "aprendizado_arquivo": memory.APRENDIZADO_TXT if extra and learn else "",
+        "sugestao_arquivo": files["docx"],
             **metrics,
             **extra_resp,
         }
@@ -1106,6 +1117,7 @@ def acao(
         "pasta": pasta,
         "meta": meta,
         "prompts_usados": learned,
+        "aprendizado_arquivo": memory.APRENDIZADO_TXT if extra and learn else "",
         **metrics,
         **extra_resp,
     }
@@ -1197,13 +1209,15 @@ def refinar(
     titulo = ultima.get("titulo") or "Peça"
     base_name = ultima.get("base") or "Peca"
 
-    if salvar_aprendizado not in ("0", "false", "False"):
-        memory.append_learning(case, tipo, fb, also_global=True)
+    uid = _uid(request) or ""
+    gravou = salvar_aprendizado not in ("0", "false", "False")
+    if gravou:
+        memory.append_learning(case, tipo, fb, also_global=True, user_id=uid)
 
     data = _load_or_extract(case, refresh=False)
     meta = data.get("meta") or {}
     texto_autos = data.get("texto") or ""
-    learned = memory.combined_instructions(case, tipo, "")
+    learned = memory.combined_instructions(case, tipo, "", uid)
 
     refine_prompt = f"""Reescreva a peça abaixo aplicando o feedback do advogado.
 Mantenha estrutura forense completa, pronta para protocolar.
@@ -1268,30 +1282,40 @@ Capa/meta: {meta}
         "id": case.name,
         "pasta": str(case),
         "prompts_usados": learned,
+        "aprendizado_arquivo": memory.APRENDIZADO_TXT if gravou else "",
         **_metrics_block(files),
         **_sinais(body, meta, case),
     }
 
 
 @app.get("/api/prompts")
-def get_prompts(case_id: str):
+def get_prompts(request: Request, case_id: str):
     try:
         case = organizer.case_dir(case_id)
     except Exception:
         raise HTTPException(404, "Processo não encontrado.")
+    uid = _uid(request) or ""
     return {
         "caso": memory.load_case_prompts(case),
-        "global": memory.load_global(),
+        "global": memory.load_global(uid),
+        "arquivo": memory.APRENDIZADO_TXT,
+        "arquivo_global": memory.GLOBAL_TXT,
         "ultima": memory.load_ultima(case),
         "combinado_exemplo": {
-            t: memory.combined_instructions(case, t, "")
+            t: memory.combined_instructions(case, t, "", uid)
             for t in ("recurso", "defesa", "resumo")
         },
     }
 
 
+@app.get("/api/aprendizado-global")
+def baixar_aprendizado_global(request: Request):
+    path = memory.caminho_global_txt(_uid(request) or "")
+    return FileResponse(path, filename=memory.GLOBAL_TXT, media_type="text/plain; charset=utf-8")
+
+
 @app.post("/api/prompts")
-def post_prompts(payload: dict):
+def post_prompts(request: Request, payload: dict):
     case_id = payload.get("case_id")
     texto = (payload.get("texto") or "").strip()
     tipo = payload.get("tipo") or "geral"
@@ -1302,8 +1326,17 @@ def post_prompts(payload: dict):
         case = organizer.case_dir(case_id)
     except Exception:
         raise HTTPException(404, "Processo não encontrado.")
-    data = memory.append_learning(case, tipo, texto, also_global=bool(also_global))
-    return {"ok": True, "caso": data, "global": memory.load_global()}
+    uid = _uid(request) or ""
+    data = memory.append_learning(
+        case, tipo, texto, also_global=bool(also_global), user_id=uid
+    )
+    return {
+        "ok": True,
+        "caso": data,
+        "global": memory.load_global(uid),
+        "arquivo": memory.APRENDIZADO_TXT,
+        "arquivo_global": memory.GLOBAL_TXT,
+    }
 
 
 @app.post("/api/salvar-docx")
