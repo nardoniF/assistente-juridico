@@ -8,8 +8,21 @@ from organizer import HOME_APP, ensure_dirs
 
 PROMPTS_CASE = "prompts_caso.json"
 ULTIMA = "ultima_geracao.json"
+APRENDIZADO_TXT = "Aprendizado.txt"
+GLOBAL_TXT = "Aprendizado_global.txt"
 GLOBAL_FILE = HOME_APP / "aprendizado_global.json"
 EXCLUSOES = HOME_APP / "exclusoes.jsonl"
+
+
+def _uid_seguro(user_id: str) -> str:
+    limpo = "".join(ch for ch in (user_id or "") if ch.isalnum() or ch in "-_")
+    return limpo or "local"
+
+
+def _pasta_global(user_id: str = "") -> Path:
+    pasta = HOME_APP / "aprendizado" / _uid_seguro(user_id)
+    pasta.mkdir(parents=True, exist_ok=True)
+    return pasta
 
 
 def _now() -> str:
@@ -40,21 +53,76 @@ def save_case_prompts(case: Path, data: dict) -> None:
     )
 
 
-def load_global() -> dict:
-    ensure_dirs()
-    if not GLOBAL_FILE.exists():
-        return {"por_tipo": {}}
+def _ler_json(path: Path, vazio: dict) -> dict:
+    if not path.exists():
+        return dict(vazio)
     try:
-        data = json.loads(GLOBAL_FILE.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return {"por_tipo": {}}
-    data.setdefault("por_tipo", {})
+        return dict(vazio)
+    if not isinstance(data, dict):
+        return dict(vazio)
     return data
 
 
-def save_global(data: dict) -> None:
+def load_global(user_id: str = "") -> dict:
     ensure_dirs()
-    GLOBAL_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    path = _pasta_global(user_id) / "aprendizado_global.json"
+    data = _ler_json(path, {"por_tipo": {}, "todos": []})
+    if not data.get("por_tipo") and not data.get("todos") and GLOBAL_FILE.exists():
+        data = _ler_json(GLOBAL_FILE, {"por_tipo": {}, "todos": []})
+    data.setdefault("por_tipo", {})
+    data.setdefault("todos", [])
+    return data
+
+
+def save_global(data: dict, user_id: str = "") -> None:
+    ensure_dirs()
+    path = _pasta_global(user_id) / "aprendizado_global.json"
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _texto_caso(case: Path) -> str:
+    geral = load_case_prompts(case).get("geral") or []
+    linhas = ["APRENDIZADO DESTE PROCESSO", ""]
+    if not geral:
+        linhas.append("(nada gravado ainda)")
+    else:
+        linhas.extend(f"- {item}" for item in geral)
+    return "\n".join(linhas) + "\n"
+
+
+def _texto_global(user_id: str = "") -> str:
+    g = load_global(user_id)
+    linhas = [
+        "APRENDIZADO GLOBAL",
+        "Vale para os outros processos deste perfil.",
+        "",
+    ]
+    todos = list(g.get("todos") or [])
+    if not todos:
+        for itens in (g.get("por_tipo") or {}).values():
+            for item in itens or []:
+                if item not in todos:
+                    todos.append(item)
+    if not todos:
+        linhas.append("(nada gravado ainda)")
+    else:
+        linhas.extend(f"- {item}" for item in todos)
+    return "\n".join(linhas) + "\n"
+
+
+def escrever_aprendizado(case: Path, user_id: str = "") -> None:
+    """Um arquivo legível na pasta do processo e outro na pasta global do perfil."""
+    (case / APRENDIZADO_TXT).write_text(_texto_caso(case), encoding="utf-8")
+    (_pasta_global(user_id) / GLOBAL_TXT).write_text(_texto_global(user_id), encoding="utf-8")
+
+
+def caminho_global_txt(user_id: str = "") -> Path:
+    path = _pasta_global(user_id) / GLOBAL_TXT
+    if not path.exists():
+        path.write_text(_texto_global(user_id), encoding="utf-8")
+    return path
 
 
 def append_learning(
@@ -63,6 +131,7 @@ def append_learning(
     texto: str,
     *,
     also_global: bool = True,
+    user_id: str = "",
 ) -> dict:
     """Guarda feedback do advogado no processo e, se quiser, no aprendizado global."""
     texto = (texto or "").strip()
@@ -81,20 +150,27 @@ def append_learning(
     save_case_prompts(case, case_data)
 
     if also_global:
-        g = load_global()
+        g = load_global(user_id)
         lista = g["por_tipo"].setdefault(tipo, [])
         if texto not in lista:
             lista.append(texto)
         g["por_tipo"][tipo] = lista[-30:]
-        save_global(g)
+        todos = g.setdefault("todos", [])
+        if texto not in todos:
+            todos.append(texto)
+        g["todos"] = todos[-40:]
+        save_global(g, user_id)
 
+    escrever_aprendizado(case, user_id)
     return case_data
 
 
-def combined_instructions(case: Path, tipo: str, extra: str = "") -> str:
+def combined_instructions(case: Path, tipo: str, extra: str = "", user_id: str = "") -> str:
     """Monta instruções: aprendizado global do tipo + prompts do processo + campo livre."""
     parts: list[str] = []
-    g = load_global()
+    g = load_global(user_id)
+    for item in g.get("todos") or []:
+        parts.append(item)
     for item in g.get("por_tipo", {}).get(tipo) or []:
         parts.append(item)
     case_data = load_case_prompts(case)
