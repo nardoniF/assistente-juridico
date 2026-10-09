@@ -1013,6 +1013,7 @@ def acao(
     modo: str = Form("arquivos"),
     instrucoes_extra: str = Form(""),
     salvar_aprendizado: str = Form("1"),
+    tambem_global: str = Form("1"),
     persona: str = Form(""),
     prazo: str = Form(""),
 ):
@@ -1027,9 +1028,10 @@ def acao(
 
     extra = (instrucoes_extra or "").strip()
     learn = salvar_aprendizado not in ("0", "false", "False")
+    tambem = tambem_global not in ("0", "false", "False")
     uid = _uid(request) or ""
     if extra and learn:
-        memory.append_learning(case, tipo, extra, also_global=True, user_id=uid)
+        memory.append_learning(case, tipo, extra, also_global=tambem, user_id=uid)
 
     data = _load_or_extract(case, refresh=True)
     meta = data.get("meta") or {}
@@ -1185,6 +1187,7 @@ def refinar(
     case_id: str = Form(...),
     feedback: str = Form(...),
     salvar_aprendizado: str = Form("1"),
+    tambem_global: str = Form("1"),
     persona: str = Form(""),
 ):
     try:
@@ -1211,8 +1214,9 @@ def refinar(
 
     uid = _uid(request) or ""
     gravou = salvar_aprendizado not in ("0", "false", "False")
+    tambem = tambem_global not in ("0", "false", "False")
     if gravou:
-        memory.append_learning(case, tipo, fb, also_global=True, user_id=uid)
+        memory.append_learning(case, tipo, fb, also_global=tambem, user_id=uid)
 
     data = _load_or_extract(case, refresh=False)
     meta = data.get("meta") or {}
@@ -1337,6 +1341,47 @@ def post_prompts(request: Request, payload: dict):
         "arquivo": memory.APRENDIZADO_TXT,
         "arquivo_global": memory.GLOBAL_TXT,
     }
+
+
+@app.post("/api/prompts/remover")
+def remover_prompt(request: Request, payload: dict):
+    case_id = payload.get("case_id")
+    texto = (payload.get("texto") or "").strip()
+    onde = payload.get("onde") or "caso"
+    if onde not in ("caso", "global", "ambos"):
+        raise HTTPException(400, "Escopo inválido.")
+    if not case_id or not texto:
+        raise HTTPException(400, "Informe o processo e o texto.")
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    try:
+        out = memory.remover_aprendizado(case, texto, onde=onde, user_id=_uid(request) or "")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, **out, "arquivo": memory.APRENDIZADO_TXT, "arquivo_global": memory.GLOBAL_TXT}
+
+
+@app.post("/api/prompts/restaurar")
+def restaurar_prompt(request: Request, payload: dict):
+    case_id = payload.get("case_id")
+    if not case_id:
+        raise HTTPException(400, "Informe o processo.")
+    try:
+        case = organizer.case_dir(case_id)
+    except Exception:
+        raise HTTPException(404, "Processo não encontrado.")
+    uid = _uid(request) or ""
+    out = memory.restaurar_aprendizado(
+        case,
+        payload.get("caso") or [],
+        payload.get("global") or [],
+        user_id=uid,
+        caso=bool(payload.get("restaurar_caso")),
+        global_=bool(payload.get("restaurar_global")),
+    )
+    return {"ok": True, **out, "arquivo": memory.APRENDIZADO_TXT, "arquivo_global": memory.GLOBAL_TXT}
 
 
 @app.post("/api/salvar-docx")
