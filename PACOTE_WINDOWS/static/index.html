@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=14" />
+  <link rel="stylesheet" href="styles.css?v=15" />
 </head>
 <body>
   <div class="ambiance" aria-hidden="true"></div>
@@ -172,10 +172,10 @@
       <section class="workspace" id="acoes-wrap" hidden>
         <div class="panel dialogue">
           <div class="panel-head">
-            <h3>Diálogo com a IA</h3>
+            <h3 id="titulo-dialogo">Diálogo com a IA</h3>
             <label class="switch">
               <input type="checkbox" id="salvar-aprendizado" checked />
-              <span>Guardar aprendizado</span>
+              <span id="rotulo-guardar">Guardar aprendizado</span>
             </label>
           </div>
           <div class="prazo-box">
@@ -234,10 +234,24 @@
           <div id="bate-papo" class="bate-papo" hidden></div>
           <button type="button" id="btn-limpar-conversa" class="ghost limpar-conversa" hidden>Limpar conversa</button>
           <div id="aprendizado-vivo" class="aprendizado-vivo">
-            <p class="micro">Deste processo · arquivo <strong>Aprendizado.txt</strong> na pasta do caso.</p>
-            <ul id="aprendizado-caso"></ul>
-            <p class="micro">Global · vale nos outros processos deste perfil. Arquivo <strong>Aprendizado_global.txt</strong> na pasta que você escolheu.</p>
-            <ul id="aprendizado-global"></ul>
+            <div class="panel-head">
+              <h3 id="titulo-aprendizado">Aprendizado</h3>
+              <label class="switch">
+                <input type="checkbox" id="aprendizado-global-flag" checked />
+                <span id="rotulo-escopo" data-en="Also on other cases">Também nos outros processos</span>
+              </label>
+            </div>
+            <p class="micro" data-en="The next draft in this case uses both lists. Uncheck the box to keep a note only in this case.">A próxima peça deste processo usa as duas listas. Desmarque a caixa para gravar só aqui.</p>
+            <div class="aprendizado-cols">
+              <div>
+                <p class="group-label" data-en="This case">Deste processo</p>
+                <ul id="aprendizado-caso"></ul>
+              </div>
+              <div>
+                <p class="group-label" data-en="Every case">Global</p>
+                <ul id="aprendizado-global"></ul>
+              </div>
+            </div>
           </div>
           <div id="pje-box" class="chips"></div>
           <div id="reabrir-box" class="chips"></div>
@@ -465,6 +479,6 @@
   </dialog>
 
   <script src="config.js"></script>
-  <script src="app.js?v=17"></script>
+  <script src="app.js?v=19"></script>
 </body>
 </html>

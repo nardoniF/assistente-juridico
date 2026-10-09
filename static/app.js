@@ -162,7 +162,7 @@ async function gravarArquivoNaPasta(caseId, nomeArquivo) {
   return true;
 }
 
-async function espelharCaso(caseId, arquivos) {
+async function espelharCaso(caseId, arquivos, silencioso) {
   const nomes = [...new Set(["processo.pdf", ...(arquivos || [])].filter(Boolean))];
   if (!(await lerPastaHandle())) return;
   try {
@@ -170,9 +170,9 @@ async function espelharCaso(caseId, arquivos) {
     for (const nome of nomes) {
       if (await gravarArquivoNaPasta(caseId, nome)) ok += 1;
     }
-    if (ok) toast("Copiado para a pasta do Mac.");
+    if (ok && !silencioso) toast("Copiado para a pasta do Mac.");
   } catch (e) {
-    toast("A pasta do Mac não recebeu o arquivo.");
+    if (!silencioso) toast("A pasta do Mac não recebeu o arquivo.");
   }
 }
 
@@ -1024,6 +1024,11 @@ function learnFlag() {
   return document.getElementById("salvar-aprendizado").checked ? "1" : "0";
 }
 
+function tambemGlobal() {
+  const el = document.getElementById("aprendizado-global-flag");
+  return !el || el.checked ? "1" : "0";
+}
+
 document.getElementById("btn-como").onclick = () => {
   const pop = document.getElementById("empty-state");
   const show = pop.hidden;
@@ -1052,6 +1057,7 @@ document.querySelectorAll("#comando button[data-tipo]").forEach((btn) => {
     fd.append("tipo", tipo);
     fd.append("modo", modo);
     fd.append("salvar_aprendizado", learnFlag());
+    fd.append("tambem_global", tambemGlobal());
     if (instrucoes) fd.append("instrucoes_extra", instrucoes);
     fd.append("persona", document.getElementById("persona").value);
     fd.append("prazo", document.getElementById("prazo").value.trim());
@@ -1173,6 +1179,7 @@ document.getElementById("btn-refinar").onclick = async () => {
   fd.append("case_id", selected.id);
   fd.append("feedback", feedback);
   fd.append("salvar_aprendizado", learnFlag());
+  fd.append("tambem_global", tambemGlobal());
   fd.append("persona", document.getElementById("persona").value);
   try {
     const r = await fetch(apiUrl("/api/refinar"), { method: "POST", body: fd });
@@ -1211,9 +1218,24 @@ document.getElementById("btn-toggle-diff")?.addEventListener("click", () => {
 
 document.getElementById("btn-fechar").onclick = () => fecharPeca();
 
-function linhasAprendizado(itens) {
-  if (!itens || !itens.length) return "<li class='micro'>Nada gravado ainda.</li>";
-  return itens.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+let aprendCache = { caso: [], global: [] };
+
+function textoVazioAprendizado() {
+  return document.documentElement.dataset.lang === "en" ? "Nothing saved yet." : "Nada gravado ainda.";
+}
+
+function rotuloTirar() {
+  return document.documentElement.dataset.lang === "en" ? "Remove" : "Tirar";
+}
+
+function linhasAprendizado(itens, onde) {
+  if (!itens || !itens.length) return `<li class="micro vazio">${textoVazioAprendizado()}</li>`;
+  return itens
+    .map(
+      (item, i) =>
+        `<li><span>${escapeHtml(item)}</span><button type="button" class="ghost tirar" data-onde="${onde}" data-i="${i}">${rotuloTirar()}</button></li>`
+    )
+    .join("");
 }
 
 function itensGlobais(g) {
@@ -1228,25 +1250,151 @@ function itensGlobais(g) {
   return flat;
 }
 
+function lerAprendLocal() {
+  try {
+    const data = JSON.parse(localStorage.getItem("harvey_aprendizado") || "{}");
+    return data && typeof data === "object" ? data : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function gravarAprendLocal(caseId, caso, global) {
+  const data = lerAprendLocal();
+  data.global = global || [];
+  data.casos = data.casos || {};
+  if (caseId) data.casos[caseId] = caso || [];
+  localStorage.setItem("harvey_aprendizado", JSON.stringify(data));
+}
+
+function unirNotas(listas) {
+  const saida = [];
+  listas.forEach((lista) => {
+    (lista || []).forEach((item) => {
+      const texto = String(item || "").trim();
+      if (texto && !saida.includes(texto)) saida.push(texto);
+    });
+  });
+  return saida.slice(-40);
+}
+
+async function linhasDoArquivo(dir, nome) {
+  try {
+    const handle = await dir.getFileHandle(nome);
+    const texto = await (await handle.getFile()).text();
+    return texto
+      .split(/\r?\n/)
+      .map((linha) => linha.trim())
+      .filter((linha) => linha.startsWith("- "))
+      .map((linha) => linha.slice(2).trim())
+      .filter((linha) => linha && linha !== "(nada gravado ainda)");
+  } catch (e) {
+    return [];
+  }
+}
+
+async function lerAprendizadoDaPasta(caseId) {
+  const raiz = await pastaComPermissao();
+  if (!raiz) return { caso: [], global: [] };
+  let caso = [];
+  try {
+    const dir = await raiz.getDirectoryHandle(caseId);
+    caso = await linhasDoArquivo(dir, "Aprendizado.txt");
+  } catch (e) {
+    caso = [];
+  }
+  const global = await linhasDoArquivo(raiz, "Aprendizado_global.txt");
+  return { caso, global };
+}
+
+function pintarAprendizado(caso, global) {
+  aprendCache = { caso: caso || [], global: global || [] };
+  const doCaso = document.getElementById("aprendizado-caso");
+  const caixaGlobal = document.getElementById("aprendizado-global");
+  if (doCaso) doCaso.innerHTML = linhasAprendizado(aprendCache.caso, "caso");
+  if (caixaGlobal) caixaGlobal.innerHTML = linhasAprendizado(aprendCache.global, "global");
+  if (selected) gravarAprendLocal(selected.id, aprendCache.caso, aprendCache.global);
+}
+
 async function carregarAprendizado() {
   const doCaso = document.getElementById("aprendizado-caso");
-  const global = document.getElementById("aprendizado-global");
-  if (!doCaso || !global) return;
+  const caixaGlobal = document.getElementById("aprendizado-global");
+  if (!doCaso || !caixaGlobal) return;
   if (!selected) {
-    doCaso.innerHTML = linhasAprendizado([]);
-    global.innerHTML = linhasAprendizado([]);
+    pintarAprendizado([], []);
     return;
   }
   try {
     const r = await fetch(apiUrl("/api/prompts?case_id=" + encodeURIComponent(selected.id)));
     const data = await r.json();
     if (!r.ok) return;
-    doCaso.innerHTML = linhasAprendizado((data.caso && data.caso.geral) || []);
-    global.innerHTML = linhasAprendizado(itensGlobais(data.global));
+    let caso = (data.caso && data.caso.geral) || [];
+    let global = itensGlobais(data.global);
+    const local = lerAprendLocal();
+    const faltaCaso = !caso.length;
+    const faltaGlobal = !global.length;
+    if (faltaCaso || faltaGlobal) {
+      const mac = await lerAprendizadoDaPasta(selected.id);
+      const backupCaso = unirNotas([local.casos && local.casos[selected.id], mac.caso]);
+      const backupGlobal = unirNotas([local.global, mac.global]);
+      if ((faltaCaso && backupCaso.length) || (faltaGlobal && backupGlobal.length)) {
+        const resp = await fetch(apiUrl("/api/prompts/restaurar"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            case_id: selected.id,
+            caso: backupCaso,
+            global: backupGlobal,
+            restaurar_caso: faltaCaso && backupCaso.length > 0,
+            restaurar_global: faltaGlobal && backupGlobal.length > 0,
+          }),
+        });
+        const gravado = await resp.json();
+        if (resp.ok) {
+          caso = (gravado.caso && gravado.caso.geral) || caso;
+          global = itensGlobais(gravado.global);
+          await espelharCaso(selected.id, ["Aprendizado.txt"], true);
+          await espelharGlobal();
+        } else {
+          if (faltaCaso) caso = backupCaso;
+          if (faltaGlobal) global = backupGlobal;
+        }
+      }
+    }
+    pintarAprendizado(caso, global);
   } catch (e) {
-    doCaso.innerHTML = linhasAprendizado([]);
+    const local = lerAprendLocal();
+    pintarAprendizado(
+      (local.casos && local.casos[selected.id]) || [],
+      local.global || []
+    );
   }
 }
+
+document.getElementById("aprendizado-vivo").addEventListener("click", async (ev) => {
+  const btn = ev.target.closest("button.tirar");
+  if (!btn || !selected) return;
+  const onde = btn.dataset.onde === "global" ? "global" : "caso";
+  const lista = onde === "global" ? aprendCache.global : aprendCache.caso;
+  const texto = lista[Number(btn.dataset.i)];
+  if (!texto) return;
+  btn.disabled = true;
+  try {
+    const r = await fetch(apiUrl("/api/prompts/remover"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ case_id: selected.id, texto, onde }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || "falha");
+    pintarAprendizado((data.caso && data.caso.geral) || [], itensGlobais(data.global));
+    await espelharCaso(selected.id, ["Aprendizado.txt"], true);
+    await espelharGlobal();
+  } catch (e) {
+    toast(e.message);
+    btn.disabled = false;
+  }
+});
 
 document.getElementById("btn-guardar-aprendizado").onclick = async () => {
   if (!selected) {
@@ -1267,16 +1415,20 @@ document.getElementById("btn-guardar-aprendizado").onclick = async () => {
         case_id: selected.id,
         texto,
         tipo: lastTipo || "geral",
-        also_global: true,
+        also_global: tambemGlobal() === "1",
       }),
     });
     const data = await r.json();
     if (!r.ok) throw new Error(data.detail || "falha");
     document.getElementById("instrucoes-extra").value = "";
-    await carregarAprendizado();
-    await espelharCaso(selected.id, ["Aprendizado.txt"]);
-    await espelharGlobal();
-    toast("Aprendizado.txt na pasta deste processo. Aprendizado_global.txt na pasta geral.");
+    pintarAprendizado((data.caso && data.caso.geral) || [], itensGlobais(data.global));
+    await espelharCaso(selected.id, ["Aprendizado.txt"], true);
+    if (tambemGlobal() === "1") await espelharGlobal();
+    toast(
+      tambemGlobal() === "1"
+        ? "Gravado neste processo e nos outros. Os dois arquivos foram atualizados."
+        : "Gravado só neste processo, no arquivo Aprendizado.txt."
+    );
   } catch (e) {
     toast(e.message);
   } finally {
@@ -1286,48 +1438,9 @@ document.getElementById("btn-guardar-aprendizado").onclick = async () => {
 
 document.getElementById("btn-ver-prompts").onclick = async () => {
   if (!selected) return;
-  const data = await (
-    await fetch(apiUrl("/api/prompts?case_id=" + encodeURIComponent(selected.id)))
-  ).json();
-  const geral = (data.caso?.geral || []).map((x) => "• " + x).join("\n") || "(nenhum)";
-  const glob =
-    Object.entries(data.global?.por_tipo || {})
-      .map(([k, arr]) => k + ":\n" + arr.map((x) => "  • " + x).join("\n"))
-      .join("\n\n") || "(nenhum)";
-  const u = data.ultima || {};
-  const met =
-    u.refines != null
-      ? `\n\nÚLTIMA PEÇA · refines: ${u.refines} · gerações: ${u.geracoes || "—"} · ${
-          u.segundos != null ? u.segundos + "s" : ""
-        }`
-      : "";
-  const hist = (data.caso?.historico || [])
-    .slice(-12)
-    .reverse()
-    .map((x) => `${x.quando || ""} · ${x.tipo || ""}\n${x.texto || ""}`)
-    .join("\n\n") || "(nenhum pedido ainda)";
-  const aud = await (
-    await fetch(apiUrl("/api/auditoria?case_id=" + encodeURIComponent(selected.id)))
-  ).json();
-  const auditTxt = (aud.linhas || [])
-    .slice(-12)
-    .reverse()
-    .map((x) => `${x.quando || ""} · ${x.usuario || ""} · ${x.acao || ""} ${x.detalhe || ""}`)
-    .join("\n") || "(ainda sem registro)";
+  await carregarAprendizado();
   const vivo = document.getElementById("aprendizado-vivo");
   if (vivo) vivo.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  await carregarAprendizado();
-  promptsBox.hidden = false;
-  promptsBox.textContent =
-    "O QUE MUDOU\n" +
-    hist +
-    "\n\nAUDITORIA\n" +
-    auditTxt +
-    "\n\nPROMPTS DESTE PROCESSO\n" +
-    geral +
-    "\n\nAPRENDIZADO GLOBAL (por tipo de ação)\n" +
-    glob +
-    met;
 };
 
 document.getElementById("btn-salvar").onclick = async () => {
@@ -1757,8 +1870,9 @@ const I18N = {
       "#btn-guardar-aprendizado": "Gravar aprendizado",
       "#empty-state .empty-kicker": "Como funciona",
       "#empty-state h3": "Um processo. Uma peça por ação.",
-      ".dialogue h3": "Diálogo com a IA",
-      ".dialogue .switch span": "Guardar aprendizado",
+      "#titulo-dialogo": "Diálogo com a IA",
+      "#titulo-aprendizado": "Aprendizado",
+      "#rotulo-guardar": "Guardar aprendizado",
       "#btn-prazo": "Calcular prazo",
       "#btn-conversar": "Só conversar",
       "#btn-refinar": "Refinar esta peça (sobrepoe)",
@@ -1823,8 +1937,9 @@ const I18N = {
       "#btn-guardar-aprendizado": "Save what I teach it",
       "#empty-state .empty-kicker": "How it works",
       "#empty-state h3": "One case. One draft per action.",
-      ".dialogue h3": "Talk to the AI",
-      ".dialogue .switch span": "Save what I teach it",
+      "#titulo-dialogo": "Talk to the AI",
+      "#titulo-aprendizado": "What it learned",
+      "#rotulo-guardar": "Save what I teach it",
       "#btn-prazo": "Count the deadline",
       "#btn-conversar": "Just talk",
       "#btn-refinar": "Refine this draft (overwrites)",

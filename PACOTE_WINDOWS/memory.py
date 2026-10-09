@@ -165,6 +165,64 @@ def append_learning(
     return case_data
 
 
+def _limpar_itens(itens) -> list[str]:
+    saida: list[str] = []
+    for item in itens or []:
+        texto = str(item or "").strip()
+        if not texto or texto in saida or texto == "(nada gravado ainda)":
+            continue
+        saida.append(texto[:2000])
+    return saida[-40:]
+
+
+def _tirar(lista, texto: str) -> list:
+    return [item for item in (lista or []) if item != texto]
+
+
+def remover_aprendizado(case: Path, texto: str, *, onde: str, user_id: str = "") -> dict:
+    texto = (texto or "").strip()
+    if not texto:
+        raise ValueError("Informe o que deve sair.")
+    if onde in ("caso", "ambos"):
+        data = load_case_prompts(case)
+        data["geral"] = _tirar(data.get("geral") or [], texto)
+        for tipo, itens in list((data.get("por_tipo") or {}).items()):
+            data["por_tipo"][tipo] = _tirar(itens, texto)
+        save_case_prompts(case, data)
+    if onde in ("global", "ambos"):
+        g = load_global(user_id)
+        g["todos"] = _tirar(g.get("todos") or [], texto)
+        for tipo, itens in list((g.get("por_tipo") or {}).items()):
+            g["por_tipo"][tipo] = _tirar(itens, texto)
+        save_global(g, user_id)
+    escrever_aprendizado(case, user_id)
+    return {"caso": load_case_prompts(case), "global": load_global(user_id)}
+
+
+def restaurar_aprendizado(
+    case: Path,
+    caso_itens,
+    global_itens,
+    *,
+    user_id: str = "",
+    caso: bool = False,
+    global_: bool = False,
+) -> dict:
+    """Recoloca listas que o navegador ou a pasta do Mac ainda têm."""
+    if caso:
+        data = load_case_prompts(case)
+        limpos = _limpar_itens(caso_itens)
+        data["geral"] = limpos
+        data.setdefault("por_tipo", {})["geral"] = list(limpos)
+        save_case_prompts(case, data)
+    if global_:
+        g = load_global(user_id)
+        g["todos"] = _limpar_itens(global_itens)
+        save_global(g, user_id)
+    escrever_aprendizado(case, user_id)
+    return {"caso": load_case_prompts(case), "global": load_global(user_id)}
+
+
 def combined_instructions(case: Path, tipo: str, extra: str = "", user_id: str = "") -> str:
     """Monta instruções: aprendizado global do tipo + prompts do processo + campo livre."""
     parts: list[str] = []

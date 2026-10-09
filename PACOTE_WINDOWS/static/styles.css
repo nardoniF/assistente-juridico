@@ -493,26 +493,53 @@ button:disabled {
 
 .aprendizado-vivo {
   margin-top: 14px;
-  padding: 12px 14px;
+  padding: 12px 14px 4px;
   border-radius: 10px;
   border: 1px solid var(--line);
   background: var(--panel);
 }
 
+.aprendizado-vivo .panel-head {
+  margin-bottom: 6px;
+}
+
+.aprendizado-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
 .aprendizado-vivo ul {
-  margin: 4px 0 12px;
-  padding-left: 18px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  max-height: 220px;
+  overflow: auto;
 }
 
 .aprendizado-vivo li {
-  margin: 4px 0;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin: 0 0 6px;
   font-size: 13px;
   line-height: 1.4;
 }
 
-.aprendizado-vivo .micro strong {
-  color: var(--ink);
-  font-weight: 600;
+.aprendizado-vivo li.vazio {
+  display: block;
+  color: var(--muted);
+}
+
+.aprendizado-vivo button.tirar {
+  flex: none;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+@media (max-width: 800px) {
+  .aprendizado-cols { grid-template-columns: 1fr; }
 }
 
 .prompts-box {
