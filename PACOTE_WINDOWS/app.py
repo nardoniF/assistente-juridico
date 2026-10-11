@@ -34,7 +34,7 @@ import prompts
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 CACHE_NAME = "extrato.json"
-EXTRACT_VERSION = 9
+EXTRACT_VERSION = 10
 PRODUCT = "xThemis"
 SITE_PASSWORD = (os.environ.get("SITE_PASSWORD") or "").strip()
 JOBS: dict[str, dict] = {}
@@ -640,6 +640,43 @@ LIMITE_PDF = 400 * 1024 * 1024
 FILA_PDF = 25 * 1024 * 1024
 
 
+def _processo_longo(case: Path) -> bool:
+    """PDF grande ou extrato grande: a leitura inteira não cabe no tempo do pedido HTTP."""
+    pdf = case / "processo.pdf"
+    try:
+        if pdf.stat().st_size >= 1_500_000:
+            return True
+    except OSError:
+        pass
+    cache = case / CACHE_NAME
+    try:
+        return cache.stat().st_size >= 120_000
+    except OSError:
+        return False
+
+
+def _enfileirar(trabalho) -> dict:
+    job = secrets.token_hex(8)
+    JOBS[job] = {"status": "lendo"}
+
+    def _rodar() -> None:
+        try:
+            JOBS[job] = {"status": "ok", "result": trabalho()}
+        except HTTPException as e:
+            detalhe = e.detail if isinstance(e.detail, str) else str(e.detail)
+            JOBS[job] = {"status": "erro", "detail": detalhe[:400]}
+        except Exception as e:
+            JOBS[job] = {"status": "erro", "detail": str(e)[:400]}
+
+    threading.Thread(target=_rodar, daemon=True).start()
+    return {
+        "ok": True,
+        "job": job,
+        "fila": True,
+        "aviso": "O processo inteiro está sendo lido. A peça sai num arquivo só.",
+    }
+
+
 async def _receber_pdf(arquivo: UploadFile, dest: Path) -> int:
     """Grava o PDF em disco, em blocos. Não segura o arquivo inteiro na memória."""
     total = 0
@@ -1033,6 +1070,33 @@ def acao(
     if extra and learn:
         memory.append_learning(case, tipo, extra, also_global=tambem, user_id=uid)
 
+    cfg_ia = _ia_do_pedido(request)
+    nome_quem = _nome(request)
+    cab_pdf = _cabecalho_pdf(request)
+
+    def _correr() -> dict:
+        return _gerar_peca(
+            case, tipo, modo, extra, learn, uid, persona, prazo, cfg_ia, nome_quem, cab_pdf
+        )
+
+    if _processo_longo(case):
+        return _enfileirar(_correr)
+    return _correr()
+
+
+def _gerar_peca(
+    case: Path,
+    tipo: str,
+    modo: str,
+    extra: str,
+    learn: bool,
+    uid: str,
+    persona: str,
+    prazo: str,
+    cfg_ia,
+    nome_quem: str,
+    cab_pdf: dict,
+) -> dict:
     data = _load_or_extract(case, refresh=True)
     meta = data.get("meta") or {}
     texto = data.get("texto") or ""
@@ -1055,7 +1119,7 @@ def acao(
         body = llm.complete(
             prompts.system_para(area_do_processo(meta, texto)),
             user_prompt,
-            cfg=_ia_do_pedido(request),
+            cfg=cfg_ia,
         )
     except llm.LlmError as e:
         raise HTTPException(400, str(e))
@@ -1073,7 +1137,7 @@ def acao(
         learned,
         segundos=segundos,
         refine=False,
-        cabecalho=_cabecalho_pdf(request),
+        cabecalho=cab_pdf,
     )
     if files.get("pasta"):
         case = Path(files["pasta"])
@@ -1085,7 +1149,7 @@ def acao(
             meta["reclamante"] = gravado["reclamante"]
         if gravado.get("reclamado"):
             meta["reclamado"] = gravado["reclamado"]
-    memory.auditar(case, _nome(request), "gerar", titulo)
+    memory.auditar(case, nome_quem, "gerar", titulo)
     extra_resp = _sinais(body, meta, case)
     metrics = _metrics_block(files)
 
@@ -1161,24 +1225,32 @@ def conversar(
         raise HTTPException(400, "Escreva a pergunta.")
     if len(texto_pergunta) > 4000:
         raise HTTPException(400, "Pergunta longa demais. Encurte um pouco.")
-    data = _load_or_extract(case, refresh=False)
-    meta = data.get("meta") or {}
-    historico = memory.load_conversa(case)
-    user_prompt = prompts.prompt_conversa(
-        meta, data.get("texto") or "", historico, texto_pergunta, prazo
-    )
-    try:
-        resposta = llm.complete(prompts.SYSTEM_CONVERSA, user_prompt, cfg=_ia_do_pedido(request))
-    except llm.LlmError as e:
-        raise HTTPException(400, str(e))
-    except Exception:
-        traceback.print_exc()
-        raise HTTPException(500, "Falha ao conversar com o modelo.")
-    historico.append({"papel": "advogada", "texto": texto_pergunta})
-    historico.append({"papel": "xthemis", "texto": resposta})
-    mensagens = memory.gravar_conversa(case, historico)
-    memory.auditar(case, _nome(request), "conversar", texto_pergunta[:180])
-    return {"ok": True, "resposta": resposta, "mensagens": mensagens}
+    cfg_ia = _ia_do_pedido(request)
+    nome_quem = _nome(request)
+
+    def _correr() -> dict:
+        data = _load_or_extract(case, refresh=False)
+        meta = data.get("meta") or {}
+        historico = memory.load_conversa(case)
+        user_prompt = prompts.prompt_conversa(
+            meta, data.get("texto") or "", historico, texto_pergunta, prazo
+        )
+        try:
+            resposta = llm.complete(prompts.SYSTEM_CONVERSA, user_prompt, cfg=cfg_ia)
+        except llm.LlmError as e:
+            raise HTTPException(400, str(e))
+        except Exception:
+            traceback.print_exc()
+            raise HTTPException(500, "Falha ao conversar com o modelo.")
+        historico.append({"papel": "advogada", "texto": texto_pergunta})
+        historico.append({"papel": "xthemis", "texto": resposta})
+        mensagens = memory.gravar_conversa(case, historico)
+        memory.auditar(case, nome_quem, "conversar", texto_pergunta[:180])
+        return {"ok": True, "resposta": resposta, "mensagens": mensagens}
+
+    if _processo_longo(case):
+        return _enfileirar(_correr)
+    return _correr()
 
 
 @app.post("/api/refinar")
@@ -1218,6 +1290,34 @@ def refinar(
     if gravou:
         memory.append_learning(case, tipo, fb, also_global=tambem, user_id=uid)
 
+    cfg_ia = _ia_do_pedido(request)
+    nome_quem = _nome(request)
+    cab_pdf = _cabecalho_pdf(request)
+
+    def _correr() -> dict:
+        return _refinar_peca(
+            case, ultima, tipo, titulo, base_name, uid, fb, gravou, persona, cfg_ia, nome_quem, cab_pdf
+        )
+
+    if _processo_longo(case):
+        return _enfileirar(_correr)
+    return _correr()
+
+
+def _refinar_peca(
+    case: Path,
+    ultima: dict,
+    tipo: str,
+    titulo: str,
+    base_name: str,
+    uid: str,
+    fb: str,
+    gravou: bool,
+    persona: str,
+    cfg_ia,
+    nome_quem: str,
+    cab_pdf: dict,
+) -> dict:
     data = _load_or_extract(case, refresh=False)
     meta = data.get("meta") or {}
     texto_autos = data.get("texto") or ""
@@ -1236,8 +1336,8 @@ APRENDIZADOS JÁ SALVOS PARA ESTE TIPO/PROCESSO:
 PEÇA ATUAL:
 {ultima["texto"]}
 
-TRECHOS DOS AUTOS (para conferência):
-{texto_autos[:180000]}
+AUTOS INTEIROS (para conferência, todas as páginas):
+{texto_autos}
 
 Capa/meta: {meta}
 
@@ -1252,7 +1352,7 @@ Capa/meta: {meta}
         body = llm.complete(
             prompts.system_para(area_do_processo(meta, texto_autos)),
             refine_prompt,
-            cfg=_ia_do_pedido(request),
+            cfg=cfg_ia,
         )
     except llm.LlmError as e:
         raise HTTPException(400, str(e))
@@ -1271,11 +1371,11 @@ Capa/meta: {meta}
         segundos=segundos,
         refine=True,
         texto_anterior=texto_anterior,
-        cabecalho=_cabecalho_pdf(request),
+        cabecalho=cab_pdf,
     )
     if files.get("pasta"):
         case = Path(files["pasta"])
-    memory.auditar(case, _nome(request), "refinar", titulo)
+    memory.auditar(case, nome_quem, "refinar", titulo)
     return {
         "ok": True,
         "titulo": titulo,
