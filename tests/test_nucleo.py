@@ -15,6 +15,7 @@ os.environ["WEB_MODE"] = "1"
 import contas  # noqa: E402
 import docx_out  # noqa: E402
 import extractor  # noqa: E402
+import llm  # noqa: E402
 import memory  # noqa: E402
 import prazos  # noqa: E402
 import prompts  # noqa: E402
@@ -167,6 +168,52 @@ class Aprendizado(unittest.TestCase):
         memory.remover_aprendizado(self.caso_a, "Citar a folha.", onde="global", user_id="u")
         self.assertIn("Citar a folha.", memory.load_case_prompts(self.caso_a)["geral"])
         self.assertEqual(memory.load_global("u")["todos"], [])
+
+
+class AutosInteiros(unittest.TestCase):
+    def test_tres_paginas_entram_sem_recorte(self):
+        texto = extractor.texto_integral(["inicial", "sentença no meio", "dispositivo no fim"])
+        self.assertIn("===== PAGINA 1 =====", texto)
+        self.assertIn("===== PAGINA 2 =====", texto)
+        self.assertIn("===== PAGINA 3 =====", texto)
+        self.assertIn("dispositivo no fim", texto)
+        self.assertIn("===== FIM DOS AUTOS =====", texto)
+        self.assertNotIn("ficaram de fora", texto)
+        self.assertNotIn("texto recortado", texto)
+
+    def test_pagina_do_meio_continua_no_lote(self):
+        paginas = [(1, "A" * 5000), (2, "MEIO-UNICO"), (3, "C" * 5000)]
+        lotes = llm.montar_lotes(paginas, 8000)
+        self.assertGreater(len(lotes), 1)
+        junto = "".join(lotes)
+        self.assertIn("===== PAGINA 1 =====", junto)
+        self.assertIn("MEIO-UNICO", junto)
+        self.assertIn("===== PAGINA 3 =====", junto)
+        texto = extractor.texto_integral(["um", "dois", "tres"])
+        partes = llm.partir_paginas("Capa\n" + texto + "\nFeche a peça.")
+        pre, pags, sufixo = partes
+        self.assertIn("Capa", pre)
+        self.assertEqual([1, 2, 3], [n for n, _ in pags])
+        self.assertIn("dois", pags[1][1])
+        self.assertIn("Feche a peça.", sufixo)
+
+    def test_gpt_leva_o_processo_que_cabe_na_janela(self):
+        cfg = {
+            "model": "gpt-4.1-mini",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-teste",
+        }
+        user = "===== PAGINA 1 =====\n" + ("fato " * 100_000)
+        self.assertGreater(len(user), 450_000)
+        self.assertTrue(llm.cabe("sistema", user, cfg))
+
+    def test_processo_maior_que_a_janela_nao_vai_numa_chamada(self):
+        cfg = {
+            "model": "gpt-4.1-mini",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-teste",
+        }
+        self.assertFalse(llm.cabe("sistema", "x" * 4_000_000, cfg))
 
 
 class Contas(unittest.TestCase):

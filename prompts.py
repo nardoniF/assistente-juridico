@@ -4,13 +4,14 @@ SYSTEM = """Você é advogado(a) trabalhista brasileiro(a), prático e preciso.
 Escreve em português do Brasil, linguagem forense sóbria, sem floreio.
 Nunca invente fatos, números de processo, IDs, datas, valores ou jurisprudência que não estejam no material.
 Se a prova não estiver no texto extraído, diga explicitamente: "NÃO CONSTA DO EXTRATO LIDO".
+O material é o processo inteiro, página por página. Leia da primeira à última. Não trate como amostra.
 Quando redigir peça, use estrutura completa (endereçamento, qualificação, fatos, direito, pedidos, fechamento).
 Não use emojis.
 
 REGRA CRÍTICA — AUDITORIA DE PAGAMENTOS:
 Antes de redigir recurso ou defesa, você DEVE:
 1) Listar cada verba/condenação da sentença (férias, 13º, intervalo, horas extras, FGTS, danos morais, etc.).
-2) Buscar nos trechos "COMPROVANTES — TRCT, RECIBOS, HOLERITES" se já houve pagamento daquela verba/período.
+2) Buscar em todas as páginas (TRCT, recibos, holerites, FGTS, ponto) se já houve pagamento daquela verba/período.
 3) Se encontrar recibo, holerite, TRCT ou demonstrativo que mostre pagamento, citar página e pedir exclusão, dedução ou compensação (art. 368 CC, art. 767 CLT, dedução na liquidação).
 4) Se NÃO encontrar comprovante no extrato, dizer que não consta e sugerir ao advogado conferir manualmente aquela página no PDF.
 5) Nunca ignore pagamentos documentados só porque a sentença condenou de novo.
@@ -121,7 +122,7 @@ def aplicar_posicao(prompt: str, persona: str, area: str) -> str:
 
 
 SYSTEM_CONVERSA = """Você responde perguntas de uma advogada sobre um processo já extraído.
-Não redige peça. Não inventa o que não está no extrato. Fala em português claro."""
+O extrato traz o processo inteiro, página por página. Não redige peça. Não inventa o que não está no extrato. Fala em português claro."""
 
 
 def prompt_conversa(meta: dict, texto: str, historico: list, pergunta: str, prazo: str = "") -> str:
@@ -164,6 +165,7 @@ Escreve em português do Brasil, linguagem forense sóbria, sem floreio.
 Este processo não é trabalhista. Não use CLT, férias, 13º, FGTS, horas extras, TRCT nem verba rescisória.
 Nunca invente fatos, números, datas, valores, filhos, guarda ou jurisprudência que não estejam no material.
 Se a prova não estiver no texto extraído, diga explicitamente: "NÃO CONSTA DO EXTRATO LIDO".
+O material é o processo inteiro, página por página. Leia da primeira à última. Não trate como amostra.
 Quando redigir peça, use estrutura completa (endereçamento, qualificação, fatos, direito, pedidos, fechamento).
 Não use emojis.
 
@@ -208,7 +210,7 @@ Dados da capa:
 Inventário de páginas com comprovante (se houver):
 {meta.get('paginas_pagamento', [])}
 
-Texto extraído (prioriza sentença e comprovantes):
+Texto integral dos autos, todas as páginas, na ordem:
 {texto}
 
 {AUDITORIA_BLOCK}
@@ -340,7 +342,7 @@ def prompt_impugnacao_laudo(meta: dict, texto: str) -> str:
 Capa:
 {meta}
 
-Autos (priorize laudo e quesitos):
+Autos inteiros (laudo e quesitos estão no meio das páginas):
 {texto}
 
 Ataque metodologia, conclusões e quesitos não respondidos. Peça esclarecimentos ou novo laudo se cabível.
@@ -507,7 +509,7 @@ Dados da capa:
 Inventário de comprovantes (se houver):
 {meta.get('paginas_pagamento', [])}
 
-Texto extraído dos autos (sentença e comprovantes priorizados):
+Texto integral dos autos, todas as páginas, na ordem:
 {texto}
 
 {AUDITORIA_BLOCK}

@@ -956,6 +956,20 @@ async function abrirFolha(pagina) {
   }
 }
 
+async function resolverFila(data, rotulo) {
+  if (!data || !data.job) return data;
+  setBusy(true, rotulo || "Lendo o processo inteiro…", "gerar");
+  for (let i = 0; i < 400; i++) {
+    await new Promise((res) => setTimeout(res, i === 0 ? 1200 : 3000));
+    const r = await fetch(apiUrl("/api/job?id=" + encodeURIComponent(data.job)));
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || "fila");
+    if (j.status === "ok") return j.result;
+    if (j.status === "erro") throw new Error(j.detail || "A leitura falhou.");
+  }
+  throw new Error("A leitura do processo inteiro ainda está em andamento. Atualize a página daqui a pouco.");
+}
+
 async function importFile(file) {
   if (!file) return;
   setStatus(importStatus, "Lendo o PDF e criando a pasta…");
@@ -1095,8 +1109,9 @@ document.querySelectorAll("#comando button[data-tipo]").forEach((btn) => {
     fd.append("prazo", document.getElementById("prazo").value.trim());
     try {
       const r = await fetch(apiUrl("/api/acao"), { method: "POST", body: fd });
-      const data = await r.json();
+      let data = await r.json();
       if (!r.ok) throw new Error(data.detail || "falha");
+      data = await resolverFila(data, "Lendo o processo inteiro…");
       lastResult = data;
       const dx = data.arquivo_docx || data.arquivos?.docx;
       const pf = data.arquivo_pdf || data.arquivos?.pdf;
@@ -1179,8 +1194,9 @@ document.getElementById("btn-conversar").onclick = async () => {
   fd.append("prazo", document.getElementById("prazo").value.trim());
   try {
     const r = await fetch(apiUrl("/api/conversar"), { method: "POST", body: fd });
-    const data = await r.json();
+    let data = await r.json();
     if (!r.ok) throw new Error(data.detail || "falha");
+    data = await resolverFila(data, "Lendo o processo inteiro…");
     document.getElementById("instrucoes-extra").value = "";
     pintarConversa(data.mensagens || []);
   } catch (e) {
@@ -1215,8 +1231,9 @@ document.getElementById("btn-refinar").onclick = async () => {
   fd.append("persona", document.getElementById("persona").value);
   try {
     const r = await fetch(apiUrl("/api/refinar"), { method: "POST", body: fd });
-    const data = await r.json();
+    let data = await r.json();
     if (!r.ok) throw new Error(data.detail || "falha");
+    data = await resolverFila(data, "Lendo o processo inteiro…");
     lastResult = data;
     showResult(data, " (refinado)", { antes: data.texto_anterior || antes });
     if (learnFlag() === "1") document.getElementById("instrucoes-extra").value = "";
