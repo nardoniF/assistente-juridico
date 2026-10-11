@@ -6,11 +6,9 @@ Base usada na conta, e só nela:
 - feriados nacionais fixos e a sexta-feira da Paixão (Lei 9.093/1995)
 - Lei 11.419/2006, art. 5º, § 3º: se não houver consulta, a ciência ficta
   cai no 10º dia corrido depois do envio
-
-Carnaval e Corpus Christi aparecem na resposta quando caem dentro do prazo,
-mas não são descontados: muitos tribunais suspendem esses dias no calendário
-próprio, e esta conta não tem esse calendário. Feriado municipal e estadual
-também ficam de fora. Por isso o resultado manda conferir no PJe.
+- Portaria GP nº 50/2025 do TRT-2, só para 2026: dias em que o expediente
+  e os prazos ficam suspensos em toda a 2ª Região, mais os do município
+  escolhido (Cotia ou São Paulo sede). Outro ano não inventa calendário.
 """
 from __future__ import annotations
 
@@ -20,32 +18,133 @@ TIPOS = {
     "recurso": (8, "Recurso ordinário", "art. 895 da CLT"),
     "embargos": (5, "Embargos de declaração", "art. 897-A da CLT"),
     "contrarrazoes": (8, "Contrarrazões", "art. 900 da CLT"),
-    "agravo": (8, "Agravo de petição", "art. 897 da CLT"),
+    "agravo": (8, "Agravo de petição", "art. 897, a, da CLT"),
+    "agravo_instrumento": (8, "Agravo de instrumento", "art. 897, b, da CLT"),
     "revista": (8, "Recurso de revista", "art. 896 da CLT"),
+    "embargos_execucao": (5, "Embargos à execução", "art. 884 da CLT"),
     "outro": (None, "Prazo informado", "contagem do art. 775 da CLT"),
 }
 
-AVISO = (
-    "Confira no PJe. Carnaval e Corpus Christi, se caírem no intervalo, são listados "
-    "e não são descontados. Feriado local e o calendário do tribunal não entram. "
-    "Não certifica tempestividade."
-)
+# CPC: dias úteis (art. 219). Apelação, contrarrazões, agravo e embargos à execução: 15.
+# Embargos de declaração: 5 (art. 1.023). Não usa a CLT nem o calendário do TRT.
+TIPOS_CPC = {
+    "recurso": (15, "Apelação", "art. 1.003 do CPC"),
+    "embargos": (5, "Embargos de declaração", "art. 1.023 do CPC"),
+    "contrarrazoes": (15, "Contrarrazões", "art. 1.010, § 1º, do CPC"),
+    "agravo": (15, "Agravo de instrumento", "art. 1.003, § 5º, do CPC"),
+    "agravo_instrumento": (15, "Agravo de instrumento", "art. 1.003, § 5º, do CPC"),
+    "revista": (15, "Recurso especial", "art. 1.003 do CPC"),
+    "embargos_execucao": (15, "Embargos à execução", "art. 915 do CPC"),
+    "outro": (None, "Prazo informado", "contagem do art. 219 do CPC"),
+}
+
+AREAS_CPC = {"civel", "familia", "previdenciario"}
+
+COMARCAS = {
+    "regional": "toda a 2ª Região",
+    "cotia": "1ª Vara do Trabalho de Cotia",
+    "saopaulo": "São Paulo (sede)",
+}
 
 
-def conferir_tribunal(inicio: date, fim: date) -> list[str]:
-    """Datas que muitos TRTs suspendem e esta conta não pula."""
+def comarca_do_processo(meta: dict, texto: str) -> str:
+    """Feriado municipal segue a vara escrita no PDF. Sem vara, vale a 2ª Região inteira."""
+    blob = " ".join(
+        [
+            str((meta or {}).get("numero") or ""),
+            str((meta or {}).get("titulo") or ""),
+            (texto or "")[:8000],
+        ]
+    ).upper()
+    if "COTIA" in blob:
+        return "cotia"
+    if (
+        "VARA DO TRABALHO DE SÃO PAULO" in blob
+        or "VARA DO TRABALHO DE SAO PAULO" in blob
+        or "FORO DE SÃO PAULO" in blob
+        or "FORO DE SAO PAULO" in blob
+    ):
+        return "saopaulo"
+    return "regional"
+
+# Portaria GP nº 50, de 2/10/2025, DEJT TRT-2 n. 4322, p. 2-3.
+# Só os dias de 2026 que suspendem expediente na Segunda Região inteira,
+# além de fim de semana, feriado nacional e recesso já contados à parte.
+_TRT2_2026 = {
+    date(2026, 2, 16): "carnaval (Portaria GP 50/2025, TRT-2)",
+    date(2026, 2, 17): "terça de carnaval (Portaria GP 50/2025, TRT-2)",
+    date(2026, 2, 18): "quarta de cinzas (Portaria GP 50/2025, TRT-2)",
+    date(2026, 4, 1): "semana santa (Portaria GP 50/2025, TRT-2)",
+    date(2026, 4, 2): "semana santa (Portaria GP 50/2025, TRT-2)",
+    date(2026, 4, 20): "suspensão do expediente (Portaria GP 50/2025, TRT-2)",
+    date(2026, 6, 5): "suspensão do expediente (Portaria GP 50/2025, TRT-2)",
+    date(2026, 7, 9): "Data Magna do Estado de São Paulo (Portaria GP 50/2025, TRT-2)",
+    date(2026, 7, 10): "suspensão do expediente (Portaria GP 50/2025, TRT-2)",
+    date(2026, 8, 10): "antecipação do Dia da Instalação dos Cursos Jurídicos (Portaria GP 50/2025, TRT-2)",
+    date(2026, 10, 30): "transferência do Dia do Servidor Público (Portaria GP 50/2025, TRT-2)",
+    date(2026, 12, 7): "antecipação do Dia da Justiça (Portaria GP 50/2025, TRT-2)",
+}
+_COTIA_2026 = {
+    date(2026, 6, 4): "Corpus Christi em Cotia (Portaria GP 50/2025)",
+    date(2026, 9, 8): "feriado local de Cotia (Portaria GP 50/2025)",
+}
+_SAOPAULO_2026 = {
+    date(2026, 6, 4): "Corpus Christi em São Paulo (Portaria GP 50/2025)",
+}
+
+
+def suspensoes_trt2(ano: int, comarca: str) -> dict[date, str]:
+    if ano != 2026 or comarca not in COMARCAS:
+        return {}
+    dias = dict(_TRT2_2026)
+    if comarca == "cotia":
+        dias.update(_COTIA_2026)
+    elif comarca == "saopaulo":
+        dias.update(_SAOPAULO_2026)
+    return dias
+
+
+def aviso_contagem(comarca: str, anos: set[int]) -> str:
+    unidade = COMARCAS.get(comarca, COMARCAS["cotia"])
+    if 2026 in anos:
+        return (
+            f"Conta de 2026 com a Portaria GP nº 50/2025 do TRT-2 ({unidade}). "
+            "Feriado de outro município e suspensão publicada depois não entram. "
+            "Confira no PJe. Não certifica tempestividade."
+        )
+    return (
+        "A portaria lida aqui é a GP nº 50/2025, só para 2026. "
+        "Neste ano entram feriado nacional e o recesso de 20/12 a 20/01. "
+        "Confira no PJe. Não certifica tempestividade."
+    )
+
+
+def conferir_tribunal(
+    inicio: date, fim: date, comarca: str = "cotia", area: str = "trabalhista"
+) -> list[str]:
+    """Carnaval ou Corpus Christi no intervalo que esta conta não pulou."""
     avisos = []
     ano = inicio.year
     while ano <= fim.year:
         pascoa = _pascoa(ano)
+        suspensos = set(suspensoes_trt2(ano, comarca)) if area == "trabalhista" else set()
         candidatos = (
             (pascoa - timedelta(days=48), "segunda de carnaval"),
             (pascoa - timedelta(days=47), "terça de carnaval"),
             (pascoa + timedelta(days=60), "Corpus Christi"),
         )
         for dia, nome in candidatos:
-            if inicio < dia <= fim:
-                avisos.append(f"{_br(dia)} ({nome}) não foi descontado — confira o calendário do TRT")
+            if not (inicio < dia <= fim) or dia in suspensos:
+                continue
+            if ano == 2026:
+                avisos.append(
+                    f"{_br(dia)} ({nome}) não está no calendário desta unidade "
+                    "na Portaria GP 50/2025 — confira no PJe"
+                )
+            else:
+                avisos.append(
+                    f"{_br(dia)} ({nome}) não foi descontado — a portaria lida aqui é só a de 2026"
+                )
         ano += 1
     return avisos
 
@@ -88,24 +187,53 @@ def em_recesso(dia: date) -> bool:
     return (dia.month == 12 and dia.day >= 20) or (dia.month == 1 and dia.day <= 20)
 
 
-def dia_util(dia: date) -> bool:
+def dia_util(dia: date, comarca: str = "cotia", area: str = "trabalhista") -> bool:
     if dia.weekday() >= 5 or em_recesso(dia):
         return False
-    return dia not in feriados_nacionais(dia.year)
+    if dia in feriados_nacionais(dia.year):
+        return False
+    if area != "trabalhista":
+        return True
+    return dia not in suspensoes_trt2(dia.year, comarca)
+
+
+def _motivo_pulo(dia: date, comarca: str) -> str:
+    nome = suspensoes_trt2(dia.year, comarca).get(dia)
+    if nome:
+        return nome
+    if em_recesso(dia):
+        return "recesso 20/12–20/01"
+    if dia.weekday() >= 5:
+        return "fim de semana"
+    if dia in feriados_nacionais(dia.year):
+        return "feriado nacional"
+    return "dia não útil"
 
 
 def _br(dia: date) -> str:
     return dia.strftime("%d/%m/%Y")
 
 
-def calcular(data_iso: str, modo: str, tipo: str, dias: int | None = None) -> dict:
+def calcular(
+    data_iso: str,
+    modo: str,
+    tipo: str,
+    dias: int | None = None,
+    comarca: str = "cotia",
+    area: str = "trabalhista",
+) -> dict:
+    if comarca not in COMARCAS:
+        raise ValueError("Escolha o calendário: 2ª Região, Cotia ou São Paulo sede.")
     try:
         inicio = datetime.strptime((data_iso or "").strip(), "%Y-%m-%d").date()
     except ValueError:
         raise ValueError("Informe a data no formato do calendário.")
-    if tipo not in TIPOS:
+    tabela = TIPOS_CPC if area in AREAS_CPC else TIPOS
+    if area not in AREAS_CPC:
+        area = "trabalhista"
+    if tipo not in tabela:
         raise ValueError("Tipo de prazo desconhecido.")
-    padrao, nome, fundamento = TIPOS[tipo]
+    padrao, nome, fundamento = tabela[tipo]
     n = padrao if padrao is not None else int(dias or 0)
     if n < 1 or n > 60:
         raise ValueError("O prazo precisa ter de 1 a 60 dias úteis.")
@@ -124,25 +252,31 @@ def calcular(data_iso: str, modo: str, tipo: str, dias: int | None = None) -> di
     pulados: list[str] = []
     for _ in range(500):
         cursor += timedelta(days=1)
-        if dia_util(cursor):
+        if dia_util(cursor, comarca, area):
             contados.append(cursor)
             if len(contados) == n:
                 break
         else:
-            motivo = "recesso 20/12–20/01" if em_recesso(cursor) else (
-                "fim de semana" if cursor.weekday() >= 5 else "feriado nacional"
-            )
-            if len(pulados) < 12:
-                pulados.append(f"{_br(cursor)} ({motivo})")
+            if len(pulados) < 16:
+                pulados.append(f"{_br(cursor)} ({_motivo_pulo(cursor, comarca)})")
     else:
         raise ValueError("Não consegui fechar a contagem nesse intervalo.")
 
     vencimento = contados[-1]
-    tribunal = conferir_tribunal(ciencia, vencimento)
+    anos = set(range(ciencia.year, vencimento.year + 1))
+    if area == "trabalhista":
+        aviso = aviso_contagem(comarca, anos)
+    else:
+        aviso = (
+            "Conta do CPC: dias úteis (art. 219) e recesso de 20/12 a 20/01 (art. 220), "
+            "mais feriado nacional. Feriado do TRT e de município não entra. "
+            "Confira no PJe. Não certifica tempestividade."
+        )
+    tribunal = conferir_tribunal(ciencia, vencimento, comarca, area)
     extra = (" " + " ".join(tribunal) + ".") if tribunal else ""
     resumo = (
         f"{nome}: {n} dias úteis ({fundamento}). {origem} "
-        f"Vencimento calculado: {_br(vencimento)}.{extra} {AVISO}"
+        f"Vencimento calculado: {_br(vencimento)}.{extra} {aviso}"
     )
     return {
         "ok": True,
@@ -150,11 +284,13 @@ def calcular(data_iso: str, modo: str, tipo: str, dias: int | None = None) -> di
         "nome": nome,
         "dias": n,
         "fundamento": fundamento,
+        "comarca": comarca,
+        "area": area,
         "ciencia": ciencia.isoformat(),
         "vencimento": vencimento.isoformat(),
         "vencimento_br": _br(vencimento),
         "pulados": pulados,
         "conferir_tribunal": tribunal,
-        "aviso": AVISO,
+        "aviso": aviso,
         "resumo": resumo,
     }
