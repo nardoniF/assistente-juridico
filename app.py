@@ -1468,6 +1468,7 @@ def prazo_calc(
     dias: str = Form(""),
     comarca: str = Form(""),
     case_id: str = Form(""),
+    area: str = Form("trabalhista"),
 ):
     try:
         n = int(dias) if (dias or "").strip() else None
@@ -1477,13 +1478,18 @@ def prazo_calc(
         try:
             case = organizer.case_dir(case_id.strip())
             loaded = _load_or_extract(case, refresh=False)
-            comarca = prazos.comarca_do_processo(loaded.get("meta") or {}, loaded.get("texto") or "")
+            meta = loaded.get("meta") or {}
+            texto = loaded.get("texto") or ""
+            comarca = prazos.comarca_do_processo(meta, texto)
+            area = area_do_processo(meta, texto)
         except Exception:
             comarca = ""
     if comarca not in prazos.COMARCAS:
         comarca = "regional"
+    if area not in ("trabalhista", "civel", "familia", "previdenciario"):
+        area = "trabalhista"
     try:
-        return prazos.calcular(data, modo, tipo, n, comarca)
+        return prazos.calcular(data, modo, tipo, n, comarca, area)
     except ValueError as e:
         raise HTTPException(400, str(e))
 

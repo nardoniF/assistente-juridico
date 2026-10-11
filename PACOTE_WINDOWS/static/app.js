@@ -624,6 +624,38 @@ function aplicarCapa(meta) {
   }
   const rec = document.querySelector("[data-tipo=recurso]");
   if (rec) rec.textContent = trab ? (langAtual === "en" ? "Ordinary appeal" : "Recurso ordinário") : (langAtual === "en" ? "Appeal" : "Apelação");
+  const prazosTxt = trab
+    ? {
+        recurso: "Recurso ordinário · 8 dias úteis",
+        embargos: "Embargos de declaração · 5",
+        contrarrazoes: "Contrarrazões · 8",
+        agravo: "Agravo de petição · 8",
+        agravo_instrumento: "Agravo de instrumento · 8",
+        revista: "Recurso de revista · 8",
+        embargos_execucao: "Embargos à execução · 5",
+        outro: "Outro",
+      }
+    : {
+        recurso: "Apelação · 15 dias úteis",
+        embargos: "Embargos de declaração · 5",
+        contrarrazoes: "Contrarrazões · 15",
+        agravo: "Agravo de instrumento · 15",
+        agravo_instrumento: "Agravo de instrumento · 15",
+        revista: "Recurso especial · 15",
+        embargos_execucao: "Embargos à execução · 15",
+        outro: "Outro",
+      };
+  const selPrazo = document.getElementById("prazo-tipo");
+  if (selPrazo) {
+    [...selPrazo.options].forEach((opt) => {
+      if (prazosTxt[opt.value]) opt.textContent = prazosTxt[opt.value];
+    });
+  }
+  const notaPrazo = document.getElementById("prazo-nota");
+  if (notaPrazo && temNumero && !trab) {
+    notaPrazo.textContent =
+      "Neste processo a conta é do CPC: dias úteis, recesso de 20/12 a 20/01 e feriado nacional. Feriado do TRT e de município não entra. Confira no PJe — isto não certifica tempestividade.";
+  }
 }
 
 function renderExtrato(meta) {
@@ -1654,7 +1686,10 @@ document.getElementById("btn-prazo").onclick = async () => {
   fd.append("modo", document.getElementById("prazo-modo").value);
   fd.append("tipo", document.getElementById("prazo-tipo").value);
   fd.append("dias", document.getElementById("prazo-dias").value);
-  if (selected) fd.append("case_id", selected.id);
+  if (selected) {
+    fd.append("case_id", selected.id);
+    fd.append("area", areaDoCaso(selected.meta));
+  }
   const r = await fetch(apiUrl("/api/prazo"), { method: "POST", body: fd });
   const data = await r.json();
   const out = document.getElementById("prazo-resultado");

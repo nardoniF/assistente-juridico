@@ -25,6 +25,21 @@ TIPOS = {
     "outro": (None, "Prazo informado", "contagem do art. 775 da CLT"),
 }
 
+# CPC: dias úteis (art. 219). Apelação, contrarrazões, agravo e embargos à execução: 15.
+# Embargos de declaração: 5 (art. 1.023). Não usa a CLT nem o calendário do TRT.
+TIPOS_CPC = {
+    "recurso": (15, "Apelação", "art. 1.003 do CPC"),
+    "embargos": (5, "Embargos de declaração", "art. 1.023 do CPC"),
+    "contrarrazoes": (15, "Contrarrazões", "art. 1.010, § 1º, do CPC"),
+    "agravo": (15, "Agravo de instrumento", "art. 1.003, § 5º, do CPC"),
+    "agravo_instrumento": (15, "Agravo de instrumento", "art. 1.003, § 5º, do CPC"),
+    "revista": (15, "Recurso especial", "art. 1.003 do CPC"),
+    "embargos_execucao": (15, "Embargos à execução", "art. 915 do CPC"),
+    "outro": (None, "Prazo informado", "contagem do art. 219 do CPC"),
+}
+
+AREAS_CPC = {"civel", "familia", "previdenciario"}
+
 COMARCAS = {
     "regional": "toda a 2ª Região",
     "cotia": "1ª Vara do Trabalho de Cotia",
@@ -104,13 +119,15 @@ def aviso_contagem(comarca: str, anos: set[int]) -> str:
     )
 
 
-def conferir_tribunal(inicio: date, fim: date, comarca: str = "cotia") -> list[str]:
+def conferir_tribunal(
+    inicio: date, fim: date, comarca: str = "cotia", area: str = "trabalhista"
+) -> list[str]:
     """Carnaval ou Corpus Christi no intervalo que esta conta não pulou."""
     avisos = []
     ano = inicio.year
     while ano <= fim.year:
         pascoa = _pascoa(ano)
-        suspensos = set(suspensoes_trt2(ano, comarca))
+        suspensos = set(suspensoes_trt2(ano, comarca)) if area == "trabalhista" else set()
         candidatos = (
             (pascoa - timedelta(days=48), "segunda de carnaval"),
             (pascoa - timedelta(days=47), "terça de carnaval"),
@@ -170,11 +187,13 @@ def em_recesso(dia: date) -> bool:
     return (dia.month == 12 and dia.day >= 20) or (dia.month == 1 and dia.day <= 20)
 
 
-def dia_util(dia: date, comarca: str = "cotia") -> bool:
+def dia_util(dia: date, comarca: str = "cotia", area: str = "trabalhista") -> bool:
     if dia.weekday() >= 5 or em_recesso(dia):
         return False
     if dia in feriados_nacionais(dia.year):
         return False
+    if area != "trabalhista":
+        return True
     return dia not in suspensoes_trt2(dia.year, comarca)
 
 
@@ -201,6 +220,7 @@ def calcular(
     tipo: str,
     dias: int | None = None,
     comarca: str = "cotia",
+    area: str = "trabalhista",
 ) -> dict:
     if comarca not in COMARCAS:
         raise ValueError("Escolha o calendário: 2ª Região, Cotia ou São Paulo sede.")
@@ -208,9 +228,12 @@ def calcular(
         inicio = datetime.strptime((data_iso or "").strip(), "%Y-%m-%d").date()
     except ValueError:
         raise ValueError("Informe a data no formato do calendário.")
-    if tipo not in TIPOS:
+    tabela = TIPOS_CPC if area in AREAS_CPC else TIPOS
+    if area not in AREAS_CPC:
+        area = "trabalhista"
+    if tipo not in tabela:
         raise ValueError("Tipo de prazo desconhecido.")
-    padrao, nome, fundamento = TIPOS[tipo]
+    padrao, nome, fundamento = tabela[tipo]
     n = padrao if padrao is not None else int(dias or 0)
     if n < 1 or n > 60:
         raise ValueError("O prazo precisa ter de 1 a 60 dias úteis.")
@@ -229,7 +252,7 @@ def calcular(
     pulados: list[str] = []
     for _ in range(500):
         cursor += timedelta(days=1)
-        if dia_util(cursor, comarca):
+        if dia_util(cursor, comarca, area):
             contados.append(cursor)
             if len(contados) == n:
                 break
@@ -241,8 +264,15 @@ def calcular(
 
     vencimento = contados[-1]
     anos = set(range(ciencia.year, vencimento.year + 1))
-    aviso = aviso_contagem(comarca, anos)
-    tribunal = conferir_tribunal(ciencia, vencimento, comarca)
+    if area == "trabalhista":
+        aviso = aviso_contagem(comarca, anos)
+    else:
+        aviso = (
+            "Conta do CPC: dias úteis (art. 219) e recesso de 20/12 a 20/01 (art. 220), "
+            "mais feriado nacional. Feriado do TRT e de município não entra. "
+            "Confira no PJe. Não certifica tempestividade."
+        )
+    tribunal = conferir_tribunal(ciencia, vencimento, comarca, area)
     extra = (" " + " ".join(tribunal) + ".") if tribunal else ""
     resumo = (
         f"{nome}: {n} dias úteis ({fundamento}). {origem} "
@@ -255,6 +285,7 @@ def calcular(
         "dias": n,
         "fundamento": fundamento,
         "comarca": comarca,
+        "area": area,
         "ciencia": ciencia.isoformat(),
         "vencimento": vencimento.isoformat(),
         "vencimento_br": _br(vencimento),
