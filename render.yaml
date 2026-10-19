@@ -15,9 +15,9 @@ services:
         sync: false
       - key: SITE_PASSWORD
         sync: false
-      - key: ASAAS_API_KEY
+      - key: MP_ACCESS_TOKEN
         sync: false
-      - key: ASAAS_WEBHOOK_TOKEN
+      - key: MP_WEBHOOK_SECRET
         sync: false
-      - key: ASAAS_SANDBOX
-        sync: false
+      - key: MP_BACK_URL
+        value: "https://www.xthemis.com.br/"
