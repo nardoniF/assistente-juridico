@@ -1,12 +1,16 @@
-"""Assinatura recorrente via Asaas (menor taxa entre as opções do escritório)."""
+"""Assinatura recorrente via Mercado Pago — mesmo token do Sensor Tattoo Fix.
+
+PIX e cartão só pelo MP (sem Asaas nesse fluxo, para não conflitar).
+"""
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
 
 import httpx
 
 from contas import load_acesso_config
+
+MP_API = "https://api.mercadopago.com"
 
 
 class CobrancaError(RuntimeError):
@@ -14,35 +18,43 @@ class CobrancaError(RuntimeError):
 
 
 def _token() -> str:
-    return (os.environ.get("ASAAS_API_KEY") or os.environ.get("ASAAS_ACCESS_TOKEN") or "").strip()
-
-
-def _base() -> str:
-    sandbox = (os.environ.get("ASAAS_SANDBOX") or "").strip().lower() in ("1", "true", "yes")
-    if sandbox:
-        return "https://sandbox.asaas.com/api/v3"
-    return (os.environ.get("ASAAS_API_URL") or "https://api.asaas.com/v3").rstrip("/")
+    # Mesmas variáveis do Worker da Sensor Tattoo Fix
+    return (
+        os.environ.get("MP_ACCESS_TOKEN")
+        or os.environ.get("MERCADOPAGO_ACCESS_TOKEN")
+        or ""
+    ).strip()
 
 
 def configurado() -> bool:
     return bool(_token())
 
 
+def _sandbox() -> bool:
+    tok = _token()
+    return tok.startswith("TEST-") or (os.environ.get("MP_SANDBOX") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
 def _headers() -> dict:
     tok = _token()
     if not tok:
         raise CobrancaError(
-            "Cobrança ainda não está ligada no servidor. Peça ao administrador para colocar a chave Asaas."
+            "Cobrança ainda não está ligada. Coloque MP_ACCESS_TOKEN no Render "
+            "(a mesma chave Mercado Pago da Sensor Tattoo Fix)."
         )
     return {
-        "access_token": tok,
+        "Authorization": f"Bearer {tok}",
         "Content-Type": "application/json",
-        "User-Agent": "xThemis/1.0",
+        "X-Idempotency-Key": os.urandom(8).hex(),
     }
 
 
 def _pedir(method: str, path: str, payload: dict | None = None) -> dict:
-    url = f"{_base()}{path}"
+    url = f"{MP_API}{path}"
     with httpx.Client(timeout=60.0) as client:
         r = client.request(method, url, headers=_headers(), json=payload)
         try:
@@ -50,84 +62,69 @@ def _pedir(method: str, path: str, payload: dict | None = None) -> dict:
         except Exception:
             data = {"raw": r.text[:400]}
         if r.status_code >= 400:
-            erros = data.get("errors") if isinstance(data, dict) else None
-            if isinstance(erros, list) and erros:
-                msg = "; ".join(
-                    str(e.get("description") or e.get("code") or e) for e in erros[:3]
+            msg = ""
+            if isinstance(data, dict):
+                msg = (
+                    data.get("message")
+                    or data.get("error")
+                    or str(data.get("cause") or "")[:300]
                 )
-            else:
-                msg = str(data)[:300]
-            raise CobrancaError(f"Asaas respondeu {r.status_code}: {msg}")
+            raise CobrancaError(f"Mercado Pago respondeu {r.status_code}: {msg or str(data)[:300]}")
         return data if isinstance(data, dict) else {"ok": True}
 
 
-def garantir_cliente(*, customer_id: str, nome: str, email: str, cpf_cnpj: str = "") -> str:
-    if customer_id:
-        return customer_id
+def _back_url() -> str:
+    return (
+        os.environ.get("MP_BACK_URL")
+        or os.environ.get("PUBLIC_SITE_URL")
+        or "https://www.xthemis.com.br/"
+    ).strip()
+
+
+def criar_assinatura(*, user_id: str, nome: str, email: str) -> dict:
     email = (email or "").strip()
-    nome = (nome or "").strip() or "Assinante xThemis"
     if "@" not in email:
         raise CobrancaError("Informe um e-mail válido para a cobrança mensal.")
-    corpo = {"name": nome, "email": email, "notificationDisabled": False}
-    doc = "".join(c for c in (cpf_cnpj or "") if c.isdigit())
-    if len(doc) in (11, 14):
-        corpo["cpfCnpj"] = doc
-    data = _pedir("POST", "/customers", corpo)
-    cid = data.get("id") or ""
-    if not cid:
-        raise CobrancaError("Asaas não devolveu o cliente.")
-    return cid
-
-
-def criar_assinatura(
-    *,
-    customer_id: str,
-    user_id: str,
-    nome: str,
-) -> dict:
     cfg = load_acesso_config()
     valor = float(cfg.get("preco_mensal") or 39.9)
     if valor < 5:
         raise CobrancaError("Preço mensal inválido no admin.")
-    amanha = (date.today() + timedelta(days=1)).isoformat()
-    data = _pedir(
-        "POST",
-        "/subscriptions",
-        {
-            "customer": customer_id,
-            "billingType": "UNDEFINED",
-            "value": round(valor, 2),
-            "nextDueDate": amanha,
-            "cycle": "MONTHLY",
-            "description": f"xThemis · assinatura mensal · {nome}",
-            "externalReference": user_id,
+    motivo = f"xThemis · {(nome or 'assinatura').strip()[:80]}"
+    corpo = {
+        "reason": motivo,
+        "external_reference": user_id,
+        "payer_email": email,
+        "auto_recurring": {
+            "frequency": 1,
+            "frequency_type": "months",
+            "transaction_amount": round(valor, 2),
+            "currency_id": "BRL",
         },
-    )
-    sub_id = data.get("id") or ""
+        "back_url": _back_url(),
+        "status": "pending",
+    }
+    data = _pedir("POST", "/preapproval", corpo)
+    sub_id = str(data.get("id") or "")
     if not sub_id:
-        raise CobrancaError("Asaas não devolveu a assinatura.")
-    link = _link_pagamento(sub_id) or data.get("paymentLink") or ""
+        raise CobrancaError("Mercado Pago não devolveu a assinatura.")
+    link = ""
+    if _sandbox():
+        link = (data.get("sandbox_init_point") or data.get("init_point") or "").strip()
+    else:
+        link = (data.get("init_point") or data.get("sandbox_init_point") or "").strip()
+    if not link:
+        raise CobrancaError("Mercado Pago não devolveu o link de pagamento.")
     return {
         "subscription_id": sub_id,
-        "customer_id": customer_id,
+        "customer_id": "",
         "value": round(valor, 2),
         "checkout_url": link,
-        "gateway": "asaas",
+        "gateway": "mercadopago",
     }
 
 
-def _link_pagamento(subscription_id: str) -> str:
-    data = _pedir("GET", f"/subscriptions/{subscription_id}/payments?limit=1")
-    itens = data.get("data") if isinstance(data, dict) else None
-    if not isinstance(itens, list) or not itens:
-        return ""
-    pag = itens[0] or {}
-    return (
-        pag.get("invoiceUrl")
-        or pag.get("bankSlipUrl")
-        or pag.get("transactionReceiptUrl")
-        or ""
-    )
+def consultar_preapproval(preapproval_id: str) -> dict:
+    return _pedir("GET", f"/preapproval/{preapproval_id}")
 
 
 def iniciar_assinatura(
@@ -138,9 +135,11 @@ def iniciar_assinatura(
     cpf_cnpj: str = "",
     customer_id: str = "",
 ) -> dict:
-    if (load_acesso_config().get("gateway") or "asaas") != "asaas":
-        raise CobrancaError("O gateway configurado no admin ainda não está ligado neste servidor.")
-    cid = garantir_cliente(
-        customer_id=customer_id, nome=nome, email=email, cpf_cnpj=cpf_cnpj
-    )
-    return criar_assinatura(customer_id=cid, user_id=user_id, nome=nome)
+    del cpf_cnpj, customer_id  # MP pede e-mail no checkout; CPF fica no fluxo do Mercado Pago
+    gateway = (load_acesso_config().get("gateway") or "mercadopago").strip().lower()
+    if gateway != "mercadopago":
+        raise CobrancaError(
+            "PIX e cartão deste produto usam só Mercado Pago (igual à Sensor Tattoo Fix). "
+            "No admin, deixe o gateway em Mercado Pago."
+        )
+    return criar_assinatura(user_id=user_id, nome=nome, email=email)

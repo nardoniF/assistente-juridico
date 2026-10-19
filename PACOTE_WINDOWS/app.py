@@ -70,7 +70,8 @@ _API_SEM_TESTE = {
     "/api/convidados/remover",
     "/api/exclusoes",
     "/api/perfil/logo",
-    "/api/webhooks/asaas",
+    "/api/webhooks/mercadopago",
+    "/api/webhooks/asaas",  # legado; não usa Asaas para PIX/cartão
 }
 
 
@@ -78,7 +79,14 @@ _API_SEM_TESTE = {
 async def login_advogada(request: Request, call_next):
     path = request.url.path
     public = (
-        path in ("/api/health", "/health", "/api/entrar", "/api/webhooks/asaas")
+        path
+        in (
+            "/api/health",
+            "/health",
+            "/api/entrar",
+            "/api/webhooks/mercadopago",
+            "/api/webhooks/asaas",
+        )
         or not path.startswith("/api/")
     )
     user = contas.user_from_request(request)
@@ -429,7 +437,7 @@ def set_acesso_config(request: Request, payload: dict):
 
 @app.post("/api/assinar")
 def assinar(request: Request, payload: dict):
-    """Pagante inicia assinatura mensal no Asaas (PIX, boleto ou cartão)."""
+    """Pagante inicia assinatura mensal no Mercado Pago (PIX ou cartão)."""
     uid = _uid(request)
     if not uid:
         raise HTTPException(401, "Entre com seu nome e senha.")
@@ -438,73 +446,85 @@ def assinar(request: Request, payload: dict):
     if contas.acesso(uid) == "free":
         raise HTTPException(400, "Esta conta é free e não passa pela cobrança.")
     email = (payload.get("email") or "").strip()
-    cpf = (payload.get("cpf") or "").strip()
     ja = contas.dados_cobranca(uid)
     try:
         ped = cobranca.iniciar_assinatura(
             user_id=uid,
             nome=_nome(request),
             email=email or ja.get("email") or "",
-            cpf_cnpj=cpf,
-            customer_id=ja.get("asaas_customer_id") or "",
         )
     except cobranca.CobrancaError as e:
         raise HTTPException(400, str(e))
     contas.gravar_assinatura(
         uid,
-        customer_id=ped.get("customer_id") or "",
         subscription_id=ped.get("subscription_id") or "",
         email=email or ja.get("email") or "",
     )
     if not ped.get("checkout_url"):
-        raise HTTPException(
-            400,
-            "Assinatura criada no Asaas, mas o link de pagamento ainda não apareceu. "
-            "Abra o painel Asaas ou tente de novo em um minuto.",
+        raise HTTPException(400, "Mercado Pago não devolveu o link. Tente de novo.")
+    return {
+        "ok": True,
+        "checkout_url": ped["checkout_url"],
+        "valor": ped["value"],
+        "gateway": "mercadopago",
+    }
+
+
+def _aplicar_status_mp(preapproval_id: str) -> None:
+    if not preapproval_id or not cobranca.configurado():
+        return
+    try:
+        data = cobranca.consultar_preapproval(preapproval_id)
+    except cobranca.CobrancaError:
+        return
+    status = (data.get("status") or "").strip().lower()
+    ext = (data.get("external_reference") or "").strip()
+    if status in ("authorized", "active"):
+        contas.aplicar_pagamento_assinatura(
+            subscription_id=preapproval_id, external_reference=ext, pago=True
         )
-    return {"ok": True, "checkout_url": ped["checkout_url"], "valor": ped["value"], "gateway": "asaas"}
+    elif status in ("cancelled", "canceled", "paused"):
+        contas.aplicar_pagamento_assinatura(
+            subscription_id=preapproval_id, external_reference=ext, pago=False
+        )
+
+
+@app.api_route("/api/webhooks/mercadopago", methods=["GET", "POST"])
+async def webhook_mercadopago(request: Request):
+    """Mercado Pago avisa assinatura autorizada ou cancelada. Sem login."""
+    secret = (os.environ.get("MP_WEBHOOK_SECRET") or "").strip()
+    if secret:
+        veio = (request.query_params.get("secret") or request.headers.get("x-xthemis-secret") or "").strip()
+        if veio != secret:
+            raise HTTPException(401, "Webhook não autorizado.")
+    topic = (request.query_params.get("topic") or request.query_params.get("type") or "").strip().lower()
+    pre_id = (request.query_params.get("id") or request.query_params.get("data.id") or "").strip()
+    body: dict = {}
+    if request.method == "POST":
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        if isinstance(body, dict):
+            topic = topic or str(body.get("type") or body.get("topic") or "").lower()
+            data = body.get("data") if isinstance(body.get("data"), dict) else {}
+            pre_id = pre_id or str(data.get("id") or body.get("id") or "")
+    if "preapproval" in topic or topic in ("subscription_preapproval", "subscription_authorized_payment"):
+        _aplicar_status_mp(pre_id)
+    elif topic in ("payment", "topic_payment") and pre_id and cobranca.configurado():
+        # Pagamento avulso da assinatura — tenta achar external_reference no body
+        ext = ""
+        if isinstance(body, dict):
+            ext = str(body.get("external_reference") or "")
+        if ext:
+            contas.aplicar_pagamento_assinatura(external_reference=ext, pago=True)
+    return {"ok": True}
 
 
 @app.post("/api/webhooks/asaas")
-async def webhook_asaas(request: Request):
-    """Asaas avisa pagamento ou cancelamento. Sem login."""
-    token_esperado = (os.environ.get("ASAAS_WEBHOOK_TOKEN") or "").strip()
-    if token_esperado:
-        veio = (request.headers.get("asaas-access-token") or request.query_params.get("token") or "").strip()
-        if veio != token_esperado:
-            raise HTTPException(401, "Webhook não autorizado.")
-    try:
-        payload = await request.json()
-    except Exception:
-        raise HTTPException(400, "JSON inválido.")
-    evento = (payload.get("event") or "").strip().upper()
-    pagamento = payload.get("payment") if isinstance(payload.get("payment"), dict) else {}
-    assinatura = payload.get("subscription") if isinstance(payload.get("subscription"), dict) else {}
-    sub_id = (
-        (pagamento.get("subscription") if isinstance(pagamento.get("subscription"), str) else "")
-        or assinatura.get("id")
-        or ""
-    )
-    ext = (
-        pagamento.get("externalReference")
-        or assinatura.get("externalReference")
-        or ""
-    )
-    if evento in ("PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"):
-        contas.aplicar_pagamento_assinatura(
-            subscription_id=sub_id, external_reference=ext, pago=True
-        )
-    elif evento in (
-        "PAYMENT_OVERDUE",
-        "PAYMENT_DELETED",
-        "PAYMENT_REFUNDED",
-        "SUBSCRIPTION_DELETED",
-        "SUBSCRIPTION_INACTIVATED",
-    ):
-        contas.aplicar_pagamento_assinatura(
-            subscription_id=sub_id, external_reference=ext, pago=False
-        )
-    return {"ok": True}
+async def webhook_asaas_legado():
+    """Mantido só para não quebrar URL antiga. PIX/cartão são Mercado Pago."""
+    return {"ok": True, "ignored": True, "gateway": "mercadopago"}
 
 
 @app.get("/api/perfil/logo")
@@ -659,7 +679,7 @@ def eu(request: Request):
         "dias_teste_padrao": contas.load_acesso_config()["dias_teste"],
         "plano": contas.load_acesso_config(),
         "cobranca_pronta": cobranca.configurado(),
-        "cobranca": "asaas_mensal",
+        "cobranca": "mercadopago_mensal",
         "paga_acao": False,
     }
 

@@ -74,9 +74,10 @@ def load_acesso_config() -> dict:
     except (TypeError, ValueError):
         preco = 39.9
     preco = max(5.0, min(preco, 9999.0))
-    gateway = (cfg.get("gateway") or "asaas").strip().lower()
-    if gateway not in ("asaas", "mercadopago", "stripe"):
-        gateway = "asaas"
+    gateway = (cfg.get("gateway") or "mercadopago").strip().lower()
+    # PIX/cartão: só Mercado Pago (mesmo da Sensor). Asaas/Stripe ficam fora deste fluxo.
+    if gateway != "mercadopago":
+        gateway = "mercadopago"
     ia_rec = (cfg.get("ia_recomendada") or "openai_mini").strip()
     if ia_rec not in ("openai_mini", "google_pro"):
         ia_rec = "openai_mini"
@@ -111,9 +112,13 @@ def save_acesso_config(
         atual["preco_mensal"] = round(max(5.0, min(preco, 9999.0)), 2)
     if gateway is not None:
         g = str(gateway).strip().lower()
-        if g not in ("asaas", "mercadopago", "stripe"):
-            raise ValueError("Gateway inválido. Use asaas, mercadopago ou stripe.")
-        atual["gateway"] = g
+        if g in ("asaas", "stripe"):
+            raise ValueError(
+                "PIX e cartão usam só Mercado Pago (Sensor Tattoo Fix). Asaas fica de fora neste produto."
+            )
+        if g != "mercadopago":
+            raise ValueError("Gateway inválido. Use mercadopago.")
+        atual["gateway"] = "mercadopago"
     if ia_recomendada is not None:
         ia = str(ia_recomendada).strip()
         if ia not in ("openai_mini", "google_pro"):
@@ -250,9 +255,10 @@ def gravar_assinatura(
     if not user:
         raise ValueError("Usuário não encontrado.")
     if customer_id:
-        user["asaas_customer_id"] = customer_id
+        user["mp_payer_id"] = customer_id
     if subscription_id:
-        user["asaas_subscription_id"] = subscription_id
+        user["mp_preapproval_id"] = subscription_id
+        user["asaas_subscription_id"] = ""  # não misturar com Asaas
     if email:
         user["email"] = email.strip()
     _save(USERS, users)
@@ -264,11 +270,19 @@ def aplicar_pagamento_assinatura(
     external_reference: str = "",
     pago: bool,
 ) -> dict | None:
-    """Webhook Asaas: liga ou desliga o acesso pago do pagante."""
+    """Webhook Mercado Pago: liga ou desliga o acesso pago do pagante."""
     users = _usuarios()
     alvo = None
     if subscription_id:
-        alvo = next((u for u in users if u.get("asaas_subscription_id") == subscription_id), None)
+        alvo = next(
+            (
+                u
+                for u in users
+                if u.get("mp_preapproval_id") == subscription_id
+                or u.get("asaas_subscription_id") == subscription_id
+            ),
+            None,
+        )
     if not alvo and external_reference:
         alvo = next((u for u in users if u.get("id") == external_reference), None)
     if not alvo:
@@ -280,7 +294,6 @@ def aplicar_pagamento_assinatura(
         alvo["pago"] = True
     else:
         alvo["pago"] = False
-        # Sem pagamento: não inventa teste novo; admin renova se quiser.
         if not _teste_ate(alvo):
             alvo["teste_ate"] = ""
     _save(USERS, users)
@@ -293,8 +306,10 @@ def dados_cobranca(user_id: str) -> dict:
         return {}
     return {
         "email": user.get("email") or "",
-        "asaas_customer_id": user.get("asaas_customer_id") or "",
-        "asaas_subscription_id": user.get("asaas_subscription_id") or "",
+        "asaas_customer_id": "",
+        "asaas_subscription_id": "",
+        "mp_preapproval_id": user.get("mp_preapproval_id") or "",
+        "mp_payer_id": user.get("mp_payer_id") or "",
     }
 
 

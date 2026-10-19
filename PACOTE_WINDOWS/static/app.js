@@ -1623,7 +1623,7 @@ function pintarDiasTeste(cfg) {
   if (gate && cfg && cfg.gateway) gate.value = cfg.gateway;
   if (nota) {
     nota.textContent = `Pagante: ${dias} dia(s) de teste, depois R$ ${dinheiroBr(mensal)}/mês via ${
-      (cfg && cfg.gateway) || "asaas"
+      (cfg && cfg.gateway) || "mercadopago"
     }.`;
   }
 }
@@ -1685,7 +1685,7 @@ function pintarAssinar(eu) {
   }
   if (!eu?.cobranca_pronta && situacao !== "pago") {
     texto.textContent +=
-      " Cobrança ainda sem chave Asaas no servidor — o administrador precisa ligar ASAAS_API_KEY no Render.";
+      " Cobrança ainda sem MP_ACCESS_TOKEN no servidor — use a mesma chave Mercado Pago da Sensor Tattoo Fix no Render.";
   }
 }
 
@@ -1810,7 +1810,7 @@ document.getElementById("btn-novo-usuario").onclick = async () => {
 document.getElementById("btn-salvar-dias-teste").onclick = async () => {
   const dias = Number(document.getElementById("dias-teste").value || 14);
   const preco = document.getElementById("preco-mensal")?.value || "39,90";
-  const gateway = document.getElementById("gateway-cobranca")?.value || "asaas";
+  const gateway = document.getElementById("gateway-cobranca")?.value || "mercadopago";
   const r = await fetch(apiUrl("/api/acesso-config"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1907,7 +1907,7 @@ document.getElementById("btn-assinar").onclick = async () => {
       window.open(data.checkout_url, "_blank", "noopener");
       toast("Página de pagamento aberta. Depois que pagar, o acesso libera sozinho.");
     } else {
-      toast("Assinatura criada. Confira o e-mail ou o painel Asaas.");
+      toast("Assinatura criada. Confira o e-mail ou o painel Mercado Pago.");
     }
   } catch (e) {
     toast(e.message);

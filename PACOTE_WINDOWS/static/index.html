@@ -377,7 +377,7 @@
           <input id="cpf-assinar" type="text" placeholder="somente números" autocomplete="off" />
         </label>
         <button type="button" id="btn-assinar" class="accent">Assinar mensalidade</button>
-        <p class="muted micro">PIX, boleto ou cartão pelo Asaas. A IA continua sendo paga à parte (OpenAI ou Google).</p>
+        <p class="muted micro">PIX ou cartão pelo Mercado Pago (mesmo da Sensor Tattoo Fix). A IA continua paga à parte (OpenAI ou Google).</p>
       </div>
       <div class="manual-ia">
         <p><strong>Sua IA (obrigatória) — passo a passo</strong></p>
@@ -425,9 +425,7 @@
         </label>
         <label>Gateway de cobrança
           <select id="gateway-cobranca">
-            <option value="asaas">Asaas · recomendado (mais barato na recorrência)</option>
-            <option value="mercadopago">Mercado Pago</option>
-            <option value="stripe">Stripe</option>
+            <option value="mercadopago">Mercado Pago · PIX e cartão (Sensor Tattoo Fix)</option>
           </select>
         </label>
         <button type="button" id="btn-salvar-dias-teste" class="ghost">Salvar plano</button>
@@ -446,9 +444,9 @@
           </select>
         </label>
         <button type="button" id="btn-novo-usuario" class="accent">Criar usuário</button>
-        <p class="muted micro">Free não expira. Pagante tem dias de teste; depois assina pelo Asaas (R$ do preço acima). Você também pode marcar Pago ou Renovar teste na mão.</p>
+        <p class="muted micro">Free não expira. Pagante tem dias de teste; depois assina pelo Mercado Pago (R$ do preço acima). Você também pode marcar Pago ou Renovar teste na mão.</p>
       </div>
-        <p class="muted micro">Cobrança recorrente: Asaas. Coloque ASAAS_API_KEY no Render. Webhook: /api/webhooks/asaas. O servidor gratuito dorme sem visita.</p>
+        <p class="muted micro">Cobrança: Mercado Pago (PIX/cartão). No Render use MP_ACCESS_TOKEN da Sensor. Webhook: /api/webhooks/mercadopago. Asaas não entra neste fluxo.</p>
         <h3>Pasta dos processos</h3>
         <p class="muted micro">Cada processo vira uma pasta com o nome das partes e o número. Dentro ficam o processo.pdf inteiro e um PDF novo para cada ação.</p>
         <label>Diretório
@@ -508,6 +506,6 @@
   </dialog>
 
   <script src="config.js"></script>
-  <script src="app.js?v=23"></script>
+  <script src="app.js?v=24"></script>
 </body>
 </html>
