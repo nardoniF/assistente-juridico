@@ -407,8 +407,13 @@
       </div>
       <div>
       <div id="convidados-box" hidden>
-        <h3>Perfis gratuitos</h3>
-        <p class="muted micro">Você é o administrador. Estas contas não pagam. Crie o nome e a senha e passe para quem for testar. A pessoa entra em www.xthemis.com.br.</p>
+        <h3>Usuários</h3>
+        <p class="muted micro">Você é o administrador. Crie o nome e a senha, escolha free ou pagante e passe para a pessoa. Ela entra em www.xthemis.com.br e cola a chave de GPT ou Gemini dela.</p>
+        <label>Dias de teste do pagante
+          <input id="dias-teste" type="number" min="1" max="365" value="14" />
+        </label>
+        <button type="button" id="btn-salvar-dias-teste" class="ghost">Salvar dias de teste</button>
+        <p id="dias-teste-nota" class="muted micro"></p>
         <ul id="usuarios-lista" class="convidados-lista"></ul>
         <label>Nome
           <input id="novo-usuario-nome" type="text" placeholder="Nome para entrar" autocomplete="off" />
@@ -416,10 +421,16 @@
         <label>Senha
           <input id="novo-usuario-senha" type="text" placeholder="Senha que você vai passar" autocomplete="off" />
         </label>
-        <button type="button" id="btn-novo-usuario" class="accent">Criar perfil gratuito</button>
-        <p class="muted micro">A conta é gratuita. No primeiro acesso a pessoa abre Ajustes e cola a chave de GPT ou Gemini dela.</p>
+        <label>Tipo
+          <select id="novo-usuario-acesso">
+            <option value="free">Free · sem prazo</option>
+            <option value="pagante">Pagante · com dias de teste</option>
+          </select>
+        </label>
+        <button type="button" id="btn-novo-usuario" class="accent">Criar usuário</button>
+        <p class="muted micro">Free não expira. Pagante usa o sistema só até acabar o teste; depois você renova, marca como pago ou muda para free.</p>
       </div>
-        <p class="muted micro">Cobrança por ação ainda não está ligada. O endereço público é www.xthemis.com.br. O servidor gratuito dorme sem visita e acorda no próximo acesso.</p>
+        <p class="muted micro">Stripe ainda não está ligado. O endereço público é www.xthemis.com.br. O servidor gratuito dorme sem visita e acorda no próximo acesso.</p>
         <h3>Pasta dos processos</h3>
         <p class="muted micro">Cada processo vira uma pasta com o nome das partes e o número. Dentro ficam o processo.pdf inteiro e um PDF novo para cada ação.</p>
         <label>Diretório
@@ -479,6 +490,6 @@
   </dialog>
 
   <script src="config.js"></script>
-  <script src="app.js?v=21"></script>
+  <script src="app.js?v=22"></script>
 </body>
 </html>

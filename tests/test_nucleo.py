@@ -220,6 +220,8 @@ class Contas(unittest.TestCase):
     def setUp(self):
         if contas.USERS.exists():
             contas.USERS.unlink()
+        if contas.ACESSO_CFG.exists():
+            contas.ACESSO_CFG.unlink()
 
     def test_primeiro_logado_vira_administrador(self):
         self.assertEqual(contas.garantir_dono({"id": "fabio", "nome": "Fabio"}), "dono")
@@ -227,8 +229,44 @@ class Contas(unittest.TestCase):
 
     def test_outro_perfil_nao_rouba_o_admin(self):
         contas.garantir_dono({"id": "fabio", "nome": "Fabio"})
-        self.assertEqual(contas.garantir_dono({"id": "teste", "nome": "Teste"}), "avulso")
+        self.assertEqual(contas.garantir_dono({"id": "teste", "nome": "Teste"}), "pagante")
         self.assertEqual(contas.acesso("fabio"), "dono")
+
+    def test_cria_free_sem_prazo(self):
+        contas.garantir_dono({"id": "fabio", "nome": "Fabio"})
+        item = contas.criar_usuario("Maria", "senha123", "free")
+        self.assertEqual(item["acesso"], "free")
+        self.assertTrue(item["pode_usar"])
+        self.assertEqual(contas.situacao(item["id"])["situacao"], "gratuito")
+
+    def test_pagante_usa_dias_de_teste(self):
+        contas.garantir_dono({"id": "fabio", "nome": "Fabio"})
+        contas.save_acesso_config(7)
+        item = contas.criar_usuario("Ana", "senha123", "pagante")
+        self.assertEqual(item["acesso"], "pagante")
+        self.assertEqual(item["situacao"], "teste")
+        self.assertEqual(item["dias_restantes"], 7)
+        self.assertTrue(item["pode_usar"])
+
+    def test_teste_expirado_bloqueia(self):
+        contas.garantir_dono({"id": "fabio", "nome": "Fabio"})
+        item = contas.criar_usuario("Joao", "senha123", "pagante")
+        users = contas._usuarios()
+        for u in users:
+            if u["id"] == item["id"]:
+                u["teste_ate"] = "2020-01-01T00:00:00+00:00"
+                u["pago"] = False
+        contas._save(contas.USERS, users)
+        ok, motivo = contas.pode_usar(item["id"])
+        self.assertFalse(ok)
+        self.assertIn("teste", motivo.lower())
+
+    def test_admin_muda_para_free(self):
+        contas.garantir_dono({"id": "fabio", "nome": "Fabio"})
+        item = contas.criar_usuario("Lia", "senha123", "pagante")
+        novo = contas.definir_acesso(item["id"], "free")
+        self.assertEqual(novo["acesso"], "free")
+        self.assertTrue(novo["pode_usar"])
 
 
 if __name__ == "__main__":

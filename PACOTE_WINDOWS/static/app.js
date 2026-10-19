@@ -1592,21 +1592,76 @@ function renderConvidados(lista) {
   });
 }
 
+function rotuloAcesso(item) {
+  if (item.acesso === "dono") return "administrador";
+  if (item.acesso === "free" || item.acesso === "cortesia") return "free";
+  if (item.situacao === "pago") return "pagante · pago";
+  if (item.situacao === "teste") {
+    const d = item.dias_restantes;
+    return `pagante · teste${d == null ? "" : " · " + d + " dia(s)"}`;
+  }
+  if (item.situacao === "expirado") return "pagante · teste acabou";
+  return item.acesso || "pagante";
+}
+
+function pintarDiasTeste(cfg) {
+  const input = document.getElementById("dias-teste");
+  const nota = document.getElementById("dias-teste-nota");
+  if (!input) return;
+  const dias = cfg && cfg.dias_teste ? cfg.dias_teste : 14;
+  input.value = String(dias);
+  if (nota) nota.textContent = `Pagante novo ganha ${dias} dia(s) de teste.`;
+}
+
 function renderUsuarios(lista) {
   const box = document.getElementById("usuarios-lista");
   if (!box) return;
   box.innerHTML = "";
   if (!lista.length) {
-    box.innerHTML = "<li class='micro'>Nenhum usuário além de você.</li>";
+    box.innerHTML = "<li class='micro'>Nenhum usuário ainda.</li>";
     return;
   }
   lista.forEach((item) => {
     const li = document.createElement("li");
-    const papel = item.acesso === "dono" ? "administrador" : "gratuito";
     const ia = item.tem_chave ? item.ia || "IA gravada" : "ainda sem chave";
-    li.textContent = `${item.nome} · ${papel} · ${ia}`;
+    const topo = document.createElement("div");
+    topo.className = "micro";
+    topo.textContent = `${item.nome} · ${rotuloAcesso(item)} · ${ia}`;
+    li.appendChild(topo);
+    if (item.acesso !== "dono") {
+      const acoes = document.createElement("div");
+      acoes.className = "chips";
+      const mk = (texto, payload) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "ghost";
+        b.textContent = texto;
+        b.onclick = () => mudarAcessoUsuario(item.id, payload);
+        acoes.appendChild(b);
+      };
+      mk("Free", { acesso: "free" });
+      mk("Pagante + teste", { acesso: "pagante", renovar: true, pago: false });
+      mk("Pago", { acesso: "pagante", pago: true });
+      if (item.acesso === "pagante" || item.acesso === "avulso") {
+        mk("Renovar teste", { acesso: "pagante", renovar: true, pago: false });
+      }
+      li.appendChild(acoes);
+    }
     box.appendChild(li);
   });
+}
+
+async function mudarAcessoUsuario(id, payload) {
+  const r = await fetch(apiUrl("/api/usuarios/acesso"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, ...payload }),
+  });
+  const data = await r.json();
+  if (!r.ok) return toast(data.detail || "Não alterei o acesso.");
+  pintarDiasTeste(data.config);
+  renderUsuarios(data.usuarios || []);
+  toast("Acesso atualizado.");
 }
 
 async function carregarConvidados() {
@@ -1614,12 +1669,13 @@ async function carregarConvidados() {
   const r = await fetch(apiUrl("/api/usuarios"));
   if (r.status === 403) {
     if (box) box.hidden = true;
-    toast("Entre na conta de administrador para criar perfis gratuitos.");
+    toast("Entre na conta de administrador para gerenciar usuários.");
     return;
   }
   const data = await r.json();
   if (!r.ok) return;
   if (box) box.hidden = false;
+  pintarDiasTeste(data.config);
   renderUsuarios(data.usuarios || []);
   const rex = await fetch(apiUrl("/api/exclusoes"));
   const lista = document.getElementById("exclusoes-lista");
@@ -1651,20 +1707,41 @@ async function removerConvidado(id) {
 }
 
 document.getElementById("btn-novo-usuario").onclick = async () => {
+  const tipo = document.getElementById("novo-usuario-acesso")?.value || "free";
   const r = await fetch(apiUrl("/api/usuarios"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       nome: document.getElementById("novo-usuario-nome").value.trim(),
       senha: document.getElementById("novo-usuario-senha").value,
+      acesso: tipo,
     }),
   });
   const data = await r.json();
   if (!r.ok) return toast(data.detail || "Não criei o usuário.");
   document.getElementById("novo-usuario-nome").value = "";
   document.getElementById("novo-usuario-senha").value = "";
+  pintarDiasTeste(data.config);
   renderUsuarios(data.usuarios || []);
-  toast("Perfil gratuito criado: " + (data.usuario && data.usuario.nome ? data.usuario.nome : "ok") + ". Passe o nome e a senha. A pessoa entra em www.xthemis.com.br.");
+  const nome = data.usuario && data.usuario.nome ? data.usuario.nome : "ok";
+  toast(
+    tipo === "pagante"
+      ? `Pagante criado: ${nome}. Teste até acabar os dias configurados.`
+      : `Free criado: ${nome}. Passe o nome e a senha.`
+  );
+};
+
+document.getElementById("btn-salvar-dias-teste").onclick = async () => {
+  const dias = Number(document.getElementById("dias-teste").value || 14);
+  const r = await fetch(apiUrl("/api/acesso-config"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dias_teste: dias }),
+  });
+  const data = await r.json();
+  if (!r.ok) return toast(data.detail || "Não salvei os dias.");
+  pintarDiasTeste(data.config);
+  toast("Dias de teste salvos: " + (data.config && data.config.dias_teste));
 };
 
 let logoPendente = null;
@@ -2163,8 +2240,20 @@ fetch(apiUrl("/api/eu"))
   .then((r) => r.json())
   .then((eu) => {
     if (eu.nome) {
-    const extra = eu.acesso === "dono" ? " · administrador" : eu.acesso === "cortesia" ? " · gratuito" : eu.acesso === "avulso" ? " · por ação" : "";
+    let extra = "";
+    if (eu.acesso === "dono") extra = " · administrador";
+    else if (eu.acesso === "free" || eu.acesso === "cortesia") extra = " · free";
+    else if (eu.situacao === "pago") extra = " · pagante";
+    else if (eu.situacao === "teste") {
+      extra =
+        eu.dias_restantes == null
+          ? " · teste"
+          : ` · teste · ${eu.dias_restantes}d`;
+    } else if (eu.situacao === "expirado" || eu.acesso === "pagante" || eu.acesso === "avulso") {
+      extra = " · teste acabou";
+    }
     document.getElementById("btn-conta").textContent = eu.nome + extra;
+    if (eu.motivo && eu.pode_usar === false) toast(eu.motivo);
   }
   })
   .catch(() => {});

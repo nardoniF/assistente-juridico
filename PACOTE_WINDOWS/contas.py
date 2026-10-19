@@ -8,6 +8,7 @@ import json
 import os
 import secrets
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from organizer import HOME_APP, ensure_dirs
@@ -15,6 +16,10 @@ from organizer import HOME_APP, ensure_dirs
 USERS = HOME_APP / "usuarios.json"
 SESSIONS = HOME_APP / "sessoes.json"
 CONVIDADOS = HOME_APP / "convidados.json"
+ACESSO_CFG = HOME_APP / "acesso_config.json"
+
+# dono = administrador · free = gratuito sem prazo · pagante = teste de N dias (depois bloqueia)
+_ACESSOS = ("dono", "free", "pagante")
 
 
 def _load(path: Path, fallback):
@@ -39,21 +44,205 @@ def tem_usuarios() -> bool:
     return bool(_load(USERS, []))
 
 
-def _acesso(user: dict, users: list) -> str:
-    marcado = user.get("acesso")
-    if marcado in ("dono", "cortesia", "avulso"):
-        return marcado
+def _agora() -> datetime:
+    return datetime.now(timezone.utc).astimezone()
+
+
+def _iso(dt: datetime) -> str:
+    return dt.isoformat(timespec="seconds")
+
+
+def _parse_iso(valor: str | None) -> datetime | None:
+    bruto = (valor or "").strip()
+    if not bruto:
+        return None
+    try:
+        return datetime.fromisoformat(bruto)
+    except Exception:
+        return None
+
+
+def load_acesso_config() -> dict:
+    cfg = _load(ACESSO_CFG, {})
+    try:
+        dias = int(cfg.get("dias_teste") or 14)
+    except (TypeError, ValueError):
+        dias = 14
+    dias = max(1, min(dias, 365))
+    return {"dias_teste": dias}
+
+
+def save_acesso_config(dias_teste: int) -> dict:
+    try:
+        dias = int(dias_teste)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Informe quantos dias de teste o pagante tem.") from exc
+    dias = max(1, min(dias, 365))
+    data = {"dias_teste": dias}
+    _save(ACESSO_CFG, data)
+    return data
+
+
+def _normalizar_acesso(marcado: str | None, user: dict, users: list) -> str:
+    if marcado == "dono":
+        return "dono"
+    if marcado in ("free", "cortesia"):
+        return "free"
+    if marcado in ("pagante", "avulso"):
+        return "pagante"
     if users and users[0].get("id") == user.get("id"):
         return "dono"
-    return "avulso"
+    return "pagante"
+
+
+def _acesso(user: dict, users: list) -> str:
+    return _normalizar_acesso(user.get("acesso"), user, users)
 
 
 def acesso(user_id: str) -> str:
     users = _load(USERS, [])
     found = next((u for u in users if u.get("id") == user_id), None)
     if not found:
-        return "avulso"
+        return "pagante"
     return _acesso(found, users)
+
+
+def _teste_ate(user: dict) -> datetime | None:
+    return _parse_iso(user.get("teste_ate") or "")
+
+
+def situacao(user_id: str) -> dict:
+    """Como está o acesso desta conta: livre, em teste ou expirado."""
+    users = _usuarios()
+    found = next((u for u in users if u.get("id") == user_id), None)
+    if not found:
+        return {
+            "acesso": "pagante",
+            "situacao": "expirado",
+            "dias_restantes": 0,
+            "teste_ate": "",
+            "pode_usar": False,
+            "motivo": "Conta não encontrada.",
+        }
+    nivel = _acesso(found, users)
+    if nivel == "dono":
+        return {
+            "acesso": "dono",
+            "situacao": "admin",
+            "dias_restantes": None,
+            "teste_ate": "",
+            "pode_usar": True,
+            "motivo": "",
+        }
+    if nivel == "free":
+        return {
+            "acesso": "free",
+            "situacao": "gratuito",
+            "dias_restantes": None,
+            "teste_ate": "",
+            "pode_usar": True,
+            "motivo": "",
+        }
+    if found.get("pago"):
+        return {
+            "acesso": "pagante",
+            "situacao": "pago",
+            "dias_restantes": None,
+            "teste_ate": found.get("teste_ate") or "",
+            "pode_usar": True,
+            "motivo": "",
+        }
+    ate = _teste_ate(found)
+    if not ate and found.get("acesso") in ("avulso", "pagante", None, ""):
+        # Conta antiga sem data de teste: abre um ciclo com o padrão do admin.
+        _marcar_teste(found)
+        if not found.get("criado_em"):
+            found["criado_em"] = _iso(_agora())
+        found["acesso"] = "pagante"
+        _save(USERS, users)
+        ate = _teste_ate(found)
+    if not ate:
+        return {
+            "acesso": "pagante",
+            "situacao": "expirado",
+            "dias_restantes": 0,
+            "teste_ate": "",
+            "pode_usar": False,
+            "motivo": "O período de teste acabou. Peça ao administrador para renovar ou marcar como pago.",
+        }
+    agora = _agora()
+    if ate.tzinfo is None:
+        ate = ate.replace(tzinfo=agora.tzinfo)
+    resto = (ate.date() - agora.date()).days
+    if resto < 0:
+        return {
+            "acesso": "pagante",
+            "situacao": "expirado",
+            "dias_restantes": 0,
+            "teste_ate": _iso(ate),
+            "pode_usar": False,
+            "motivo": "O período de teste acabou. Peça ao administrador para renovar ou marcar como pago.",
+        }
+    return {
+        "acesso": "pagante",
+        "situacao": "teste",
+        "dias_restantes": resto,
+        "teste_ate": _iso(ate),
+        "pode_usar": True,
+        "motivo": "",
+    }
+
+
+def pode_usar(user_id: str) -> tuple[bool, str]:
+    info = situacao(user_id)
+    return bool(info.get("pode_usar")), (info.get("motivo") or "")
+
+
+def _marcar_teste(user: dict, dias: int | None = None) -> None:
+    n = dias if dias is not None else load_acesso_config()["dias_teste"]
+    user["teste_ate"] = _iso(_agora() + timedelta(days=max(1, int(n))))
+    user["pago"] = False
+    if not user.get("criado_em"):
+        user["criado_em"] = _iso(_agora())
+
+
+def definir_acesso(
+    user_id: str,
+    acesso_novo: str,
+    *,
+    renovar: bool = False,
+    pago: bool | None = None,
+) -> dict:
+    """Admin muda free/pagante, renova teste ou marca pagante como pago."""
+    acesso_novo = (acesso_novo or "").strip().lower()
+    if acesso_novo == "cortesia":
+        acesso_novo = "free"
+    if acesso_novo == "avulso":
+        acesso_novo = "pagante"
+    if acesso_novo not in ("free", "pagante"):
+        raise ValueError("Escolha free ou pagante. O administrador não muda por aqui.")
+    users, user = _achar_usuario(user_id)
+    if not user:
+        raise ValueError("Usuário não encontrado.")
+    if _acesso(user, users) == "dono":
+        raise ValueError("O administrador não muda de tipo por aqui.")
+    user["acesso"] = acesso_novo
+    if not user.get("criado_em"):
+        user["criado_em"] = _iso(_agora())
+    if acesso_novo == "free":
+        user["teste_ate"] = ""
+        user["pago"] = False
+    elif pago is True:
+        user["pago"] = True
+    else:
+        user["pago"] = False
+        if renovar or not _teste_ate(user):
+            _marcar_teste(user)
+    _save(USERS, users)
+    item = next((u for u in listar_usuarios() if u["id"] == user_id), None)
+    if not item:
+        raise ValueError("Usuário não encontrado.")
+    return item
 
 
 def garantir_dono(user: dict | None) -> str:
@@ -66,7 +255,7 @@ def garantir_dono(user: dict | None) -> str:
     if found and _acesso(found, users) == "dono":
         return "dono"
     if tem_dono:
-        return _acesso(found, users) if found else "avulso"
+        return _acesso(found, users) if found else "pagante"
     if not found:
         found = {
             "id": user["id"],
@@ -127,7 +316,7 @@ def adicionar_convidado(nome: str, nota: str = "") -> dict:
     users = _load(USERS, [])
     for user in users:
         if user.get("nome", "").strip().lower() == nome.lower() and _acesso(user, users) != "dono":
-            user["acesso"] = "cortesia"
+            user["acesso"] = "free"
             item["user_id"] = user["id"]
             _save(USERS, users)
             _save(CONVIDADOS, itens)
@@ -143,8 +332,9 @@ def remover_convidado(convidado_id: str) -> None:
     if alvo.get("user_id"):
         users = _load(USERS, [])
         for user in users:
-            if user.get("id") == alvo["user_id"] and user.get("acesso") == "cortesia":
-                user["acesso"] = "avulso"
+            if user.get("id") == alvo["user_id"] and _acesso(user, users) == "free":
+                user["acesso"] = "pagante"
+                _marcar_teste(user)
         _save(USERS, users)
     _save(CONVIDADOS, [x for x in itens if x.get("id") != convidado_id])
 
@@ -214,19 +404,23 @@ def entrar(nome: str, senha: str, *, criar: bool = False) -> dict:
         if not users:
             marcado = "dono"
         elif conv:
-            marcado = "cortesia"
+            marcado = "free"
         else:
-            marcado = "avulso"
+            marcado = "pagante"
         user = {
             "id": secrets.token_hex(8),
             "nome": nome,
             "salt": salt,
             "hash": _hash(senha, salt),
             "acesso": marcado,
+            "criado_em": _iso(_agora()),
+            "pago": False,
         }
+        if marcado == "pagante":
+            _marcar_teste(user)
         users.append(user)
         _save(USERS, users)
-        if conv and marcado == "cortesia":
+        if conv and marcado == "free":
             conv["user_id"] = user["id"]
             itens = _load(CONVIDADOS, [])
             for item in itens:
@@ -322,7 +516,8 @@ def salvar_perfil(user_id: str, nome: str, dados: dict) -> dict:
             "nome": (nome or "").strip() or "perfil",
             "salt": "",
             "hash": "",
-            "acesso": "dono" if not users else "cortesia",
+            "acesso": "dono" if not users else "free",
+            "criado_em": _iso(_agora()),
             "perfil": {},
         }
         users.append(user)
@@ -347,11 +542,18 @@ def listar_usuarios() -> list[dict]:
     saida = []
     for user in users:
         perfil = user.get("perfil") or {}
+        uid = user.get("id") or ""
+        info = situacao(uid) if uid else {}
         saida.append(
             {
-                "id": user.get("id") or "",
+                "id": uid,
                 "nome": user.get("nome") or "",
-                "acesso": _acesso(user, users),
+                "acesso": info.get("acesso") or _acesso(user, users),
+                "situacao": info.get("situacao") or "",
+                "dias_restantes": info.get("dias_restantes"),
+                "teste_ate": info.get("teste_ate") or "",
+                "pago": bool(user.get("pago")),
+                "pode_usar": bool(info.get("pode_usar")),
                 "ia": (perfil.get("provider_label") or perfil.get("provider") or ""),
                 "tem_chave": bool((perfil.get("api_key") or "").strip()),
             }
@@ -359,10 +561,17 @@ def listar_usuarios() -> list[dict]:
     return saida
 
 
-def criar_usuario(nome: str, senha: str) -> dict:
-    """Conta de teste, sem cobrança. Não devolve token: o administrador continua logado."""
+def criar_usuario(nome: str, senha: str, acesso_tipo: str = "free") -> dict:
+    """Cria free ou pagante. Não devolve token: o administrador continua logado."""
     nome = (nome or "").strip()
     senha = senha or ""
+    acesso_tipo = (acesso_tipo or "free").strip().lower()
+    if acesso_tipo == "cortesia":
+        acesso_tipo = "free"
+    if acesso_tipo == "avulso":
+        acesso_tipo = "pagante"
+    if acesso_tipo not in ("free", "pagante"):
+        raise ValueError("Escolha free ou pagante.")
     if len(nome) < 2 or len(senha) < 4:
         raise ValueError("Nome e senha (mínimo 4 caracteres).")
     users = _usuarios()
@@ -374,9 +583,13 @@ def criar_usuario(nome: str, senha: str) -> dict:
         "nome": nome,
         "salt": salt,
         "hash": _hash(senha, salt),
-        "acesso": "cortesia",
+        "acesso": acesso_tipo,
+        "criado_em": _iso(_agora()),
+        "pago": False,
         "perfil": {},
     }
+    if acesso_tipo == "pagante":
+        _marcar_teste(user)
     users.append(user)
     _save(USERS, users)
-    return {"id": user["id"], "nome": nome, "acesso": "cortesia"}
+    return next(u for u in listar_usuarios() if u["id"] == user["id"])

@@ -54,6 +54,23 @@ app.add_middleware(
 app.mount("/ui", StaticFiles(directory=STATIC), name="static")
 
 
+_API_SEM_TESTE = {
+    "/api/health",
+    "/health",
+    "/api/entrar",
+    "/api/sair",
+    "/api/eu",
+    "/api/config",
+    "/api/usuarios",
+    "/api/usuarios/acesso",
+    "/api/acesso-config",
+    "/api/convidados",
+    "/api/convidados/remover",
+    "/api/exclusoes",
+    "/api/perfil/logo",
+}
+
+
 @app.middleware("http")
 async def login_advogada(request: Request, call_next):
     path = request.url.path
@@ -66,6 +83,21 @@ async def login_advogada(request: Request, call_next):
             status_code=401,
             media_type="application/json",
         )
+    if (
+        path.startswith("/api/")
+        and path not in _API_SEM_TESTE
+        and not path.startswith("/api/convidados")
+        and request.method != "OPTIONS"
+        and user
+        and user.get("id")
+    ):
+        ok, motivo = contas.pode_usar(user["id"])
+        if not ok:
+            return Response(
+                json.dumps({"detail": motivo}, ensure_ascii=False),
+                status_code=402,
+                media_type="application/json",
+            )
     return await call_next(request)
 
 
@@ -306,7 +338,10 @@ def set_config(request: Request, payload: dict):
 def usuarios(request: Request):
     if not _pode_convidar(request):
         raise HTTPException(403, "Só o administrador vê os usuários.")
-    return {"usuarios": contas.listar_usuarios()}
+    return {
+        "usuarios": contas.listar_usuarios(),
+        "config": contas.load_acesso_config(),
+    }
 
 
 @app.post("/api/usuarios")
@@ -314,10 +349,58 @@ def novo_usuario(request: Request, payload: dict):
     if not _pode_convidar(request):
         raise HTTPException(403, "Só o administrador cria usuário.")
     try:
-        item = contas.criar_usuario(payload.get("nome") or "", payload.get("senha") or "")
+        item = contas.criar_usuario(
+            payload.get("nome") or "",
+            payload.get("senha") or "",
+            payload.get("acesso") or "free",
+        )
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return {"ok": True, "usuario": item, "usuarios": contas.listar_usuarios()}
+    return {
+        "ok": True,
+        "usuario": item,
+        "usuarios": contas.listar_usuarios(),
+        "config": contas.load_acesso_config(),
+    }
+
+
+@app.post("/api/usuarios/acesso")
+def mudar_acesso_usuario(request: Request, payload: dict):
+    if not _pode_convidar(request):
+        raise HTTPException(403, "Só o administrador muda o tipo de acesso.")
+    try:
+        item = contas.definir_acesso(
+            payload.get("id") or "",
+            payload.get("acesso") or "",
+            renovar=bool(payload.get("renovar")),
+            pago=payload.get("pago") if "pago" in payload else None,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {
+        "ok": True,
+        "usuario": item,
+        "usuarios": contas.listar_usuarios(),
+        "config": contas.load_acesso_config(),
+    }
+
+
+@app.get("/api/acesso-config")
+def get_acesso_config(request: Request):
+    if not _pode_convidar(request):
+        raise HTTPException(403, "Só o administrador vê esta configuração.")
+    return contas.load_acesso_config()
+
+
+@app.post("/api/acesso-config")
+def set_acesso_config(request: Request, payload: dict):
+    if not _pode_convidar(request):
+        raise HTTPException(403, "Só o administrador muda os dias de teste.")
+    try:
+        cfg = contas.save_acesso_config(payload.get("dias_teste"))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "config": cfg}
 
 
 @app.get("/api/perfil/logo")
@@ -445,17 +528,33 @@ def eu(request: Request):
     user = getattr(request.state, "user", None)
     if user and user.get("id"):
         nivel = contas.garantir_dono(user)
+        info = contas.situacao(user["id"])
     elif not contas.tem_usuarios():
         nivel = "dono"
+        info = {
+            "acesso": "dono",
+            "situacao": "admin",
+            "dias_restantes": None,
+            "teste_ate": "",
+            "pode_usar": True,
+            "motivo": "",
+        }
     else:
         nivel = ""
+        info = {}
     return {
         "logado": bool(user),
         "exige_login": contas.tem_usuarios(),
         "nome": (user or {}).get("nome") or "",
-        "acesso": nivel,
-        "cobranca": "por_acao",
-        "paga_acao": nivel == "avulso",
+        "acesso": nivel or info.get("acesso") or "",
+        "situacao": info.get("situacao") or "",
+        "dias_restantes": info.get("dias_restantes"),
+        "teste_ate": info.get("teste_ate") or "",
+        "pode_usar": bool(info.get("pode_usar")) if info else True,
+        "motivo": info.get("motivo") or "",
+        "dias_teste_padrao": contas.load_acesso_config()["dias_teste"],
+        "cobranca": "teste_pagante",
+        "paga_acao": False,
     }
 
 
@@ -496,10 +595,12 @@ def _load_or_extract(case: Path, *, refresh: bool = False) -> dict:
 
     if not refresh and cache.exists():
         try:
-            cached = json.loads(cache.read_text(encoding="utf-8"))
-            ver = (cached.get("meta") or {}).get("extracao", {}).get("versao")
-            if ver == EXTRACT_VERSION:
-                return cached
+            # PDF mais novo que o extrato: relê. Senão reaproveita (gera peça sem OCR de novo).
+            if pdf.stat().st_mtime <= cache.stat().st_mtime:
+                cached = json.loads(cache.read_text(encoding="utf-8"))
+                ver = (cached.get("meta") or {}).get("extracao", {}).get("versao")
+                if ver == EXTRACT_VERSION:
+                    return cached
         except Exception:
             pass
 
@@ -1097,7 +1198,7 @@ def _gerar_peca(
     nome_quem: str,
     cab_pdf: dict,
 ) -> dict:
-    data = _load_or_extract(case, refresh=True)
+    data = _load_or_extract(case, refresh=False)
     meta = data.get("meta") or {}
     texto = data.get("texto") or ""
     titulo, _, base_name = ACTION_MAP[tipo]
