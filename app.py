@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 import acordaos
+import cobranca
 import contas
 import docx_out
 import sumulas
@@ -64,17 +65,22 @@ _API_SEM_TESTE = {
     "/api/usuarios",
     "/api/usuarios/acesso",
     "/api/acesso-config",
+    "/api/assinar",
     "/api/convidados",
     "/api/convidados/remover",
     "/api/exclusoes",
     "/api/perfil/logo",
+    "/api/webhooks/asaas",
 }
 
 
 @app.middleware("http")
 async def login_advogada(request: Request, call_next):
     path = request.url.path
-    public = path in ("/api/health", "/health", "/api/entrar") or not path.startswith("/api/")
+    public = (
+        path in ("/api/health", "/health", "/api/entrar", "/api/webhooks/asaas")
+        or not path.startswith("/api/")
+    )
     user = contas.user_from_request(request)
     request.state.user = user
     if not public and contas.tem_usuarios() and not user and request.method != "OPTIONS":
@@ -238,7 +244,9 @@ def config_js():
     return Response(body, media_type="application/javascript")
 
 
-_PRESETS_PERFIL = {k: v for k, v in PRESETS.items() if k != "groq_free"}
+_PRESETS_PERFIL = {
+    k: v for k, v in PRESETS.items() if k in ("openai_mini", "google_pro")
+}
 
 
 def _resposta_config(request: Request, origem: dict, *, do_perfil: bool) -> dict:
@@ -272,7 +280,12 @@ def _resposta_config(request: Request, origem: dict, *, do_perfil: bool) -> dict
         "has_logo": bool(origem.get("has_logo")),
         "eh_admin": acesso == "dono",
         "acesso": acesso,
-        "custo_estimado": "Cada perfil usa a própria chave, GPT ou Gemini. Não há plano de IA grátis.",
+        "plano": contas.load_acesso_config(),
+        "cobranca_pronta": cobranca.configurado(),
+        "custo_estimado": (
+            "O xThemis é a assinatura do sistema. A IA é à parte: cada pessoa assina GPT ou Gemini "
+            "e cola a própria chave neste perfil. Não usamos uma IA única para todo mundo."
+        ),
     }
 
 
@@ -288,7 +301,13 @@ def get_config(request: Request):
 @app.post("/api/config")
 def set_config(request: Request, payload: dict):
     if payload.get("preset") == "groq_free" or payload.get("provider") == "groq":
-        raise HTTPException(400, "Escolha GPT ou Gemini. Este perfil não usa IA grátis.")
+        raise HTTPException(400, "Escolha GPT-4.1 mini ou Gemini Pro. Não usamos IA grátis neste perfil.")
+    preset_escolhido = (payload.get("preset") or "").strip()
+    if preset_escolhido and preset_escolhido not in _PRESETS_PERFIL:
+        raise HTTPException(
+            400,
+            "Só aceitamos OpenAI GPT-4.1 mini ou Google Gemini Pro. Escolha um desses planos.",
+        )
     allowed = {}
     if "api_key" in payload:
         allowed["api_key"] = (payload.get("api_key") or "").strip()
@@ -395,12 +414,97 @@ def get_acesso_config(request: Request):
 @app.post("/api/acesso-config")
 def set_acesso_config(request: Request, payload: dict):
     if not _pode_convidar(request):
-        raise HTTPException(403, "Só o administrador muda os dias de teste.")
+        raise HTTPException(403, "Só o administrador muda o plano.")
     try:
-        cfg = contas.save_acesso_config(payload.get("dias_teste"))
+        cfg = contas.save_acesso_config(
+            dias_teste=payload.get("dias_teste"),
+            preco_mensal=payload.get("preco_mensal"),
+            gateway=payload.get("gateway"),
+            ia_recomendada=payload.get("ia_recomendada"),
+        )
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True, "config": cfg}
+
+
+@app.post("/api/assinar")
+def assinar(request: Request, payload: dict):
+    """Pagante inicia assinatura mensal no Asaas (PIX, boleto ou cartão)."""
+    uid = _uid(request)
+    if not uid:
+        raise HTTPException(401, "Entre com seu nome e senha.")
+    if contas.acesso(uid) == "dono":
+        raise HTTPException(400, "Administrador não precisa assinar.")
+    if contas.acesso(uid) == "free":
+        raise HTTPException(400, "Esta conta é free e não passa pela cobrança.")
+    email = (payload.get("email") or "").strip()
+    cpf = (payload.get("cpf") or "").strip()
+    ja = contas.dados_cobranca(uid)
+    try:
+        ped = cobranca.iniciar_assinatura(
+            user_id=uid,
+            nome=_nome(request),
+            email=email or ja.get("email") or "",
+            cpf_cnpj=cpf,
+            customer_id=ja.get("asaas_customer_id") or "",
+        )
+    except cobranca.CobrancaError as e:
+        raise HTTPException(400, str(e))
+    contas.gravar_assinatura(
+        uid,
+        customer_id=ped.get("customer_id") or "",
+        subscription_id=ped.get("subscription_id") or "",
+        email=email or ja.get("email") or "",
+    )
+    if not ped.get("checkout_url"):
+        raise HTTPException(
+            400,
+            "Assinatura criada no Asaas, mas o link de pagamento ainda não apareceu. "
+            "Abra o painel Asaas ou tente de novo em um minuto.",
+        )
+    return {"ok": True, "checkout_url": ped["checkout_url"], "valor": ped["value"], "gateway": "asaas"}
+
+
+@app.post("/api/webhooks/asaas")
+async def webhook_asaas(request: Request):
+    """Asaas avisa pagamento ou cancelamento. Sem login."""
+    token_esperado = (os.environ.get("ASAAS_WEBHOOK_TOKEN") or "").strip()
+    if token_esperado:
+        veio = (request.headers.get("asaas-access-token") or request.query_params.get("token") or "").strip()
+        if veio != token_esperado:
+            raise HTTPException(401, "Webhook não autorizado.")
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "JSON inválido.")
+    evento = (payload.get("event") or "").strip().upper()
+    pagamento = payload.get("payment") if isinstance(payload.get("payment"), dict) else {}
+    assinatura = payload.get("subscription") if isinstance(payload.get("subscription"), dict) else {}
+    sub_id = (
+        (pagamento.get("subscription") if isinstance(pagamento.get("subscription"), str) else "")
+        or assinatura.get("id")
+        or ""
+    )
+    ext = (
+        pagamento.get("externalReference")
+        or assinatura.get("externalReference")
+        or ""
+    )
+    if evento in ("PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"):
+        contas.aplicar_pagamento_assinatura(
+            subscription_id=sub_id, external_reference=ext, pago=True
+        )
+    elif evento in (
+        "PAYMENT_OVERDUE",
+        "PAYMENT_DELETED",
+        "PAYMENT_REFUNDED",
+        "SUBSCRIPTION_DELETED",
+        "SUBSCRIPTION_INACTIVATED",
+    ):
+        contas.aplicar_pagamento_assinatura(
+            subscription_id=sub_id, external_reference=ext, pago=False
+        )
+    return {"ok": True}
 
 
 @app.get("/api/perfil/logo")
@@ -553,7 +657,9 @@ def eu(request: Request):
         "pode_usar": bool(info.get("pode_usar")) if info else True,
         "motivo": info.get("motivo") or "",
         "dias_teste_padrao": contas.load_acesso_config()["dias_teste"],
-        "cobranca": "teste_pagante",
+        "plano": contas.load_acesso_config(),
+        "cobranca_pronta": cobranca.configurado(),
+        "cobranca": "asaas_mensal",
         "paga_acao": False,
     }
 
