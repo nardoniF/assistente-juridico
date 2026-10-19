@@ -268,6 +268,21 @@ class Contas(unittest.TestCase):
         self.assertEqual(novo["acesso"], "free")
         self.assertTrue(novo["pode_usar"])
 
+    def test_preco_mensal_padrao(self):
+        cfg = contas.load_acesso_config()
+        self.assertEqual(cfg["preco_mensal"], 39.9)
+        self.assertEqual(cfg["gateway"], "asaas")
+        salvo = contas.save_acesso_config(preco_mensal="49,90")
+        self.assertEqual(salvo["preco_mensal"], 49.9)
+
+    def test_webhook_marca_pago(self):
+        contas.garantir_dono({"id": "fabio", "nome": "Fabio"})
+        item = contas.criar_usuario("Bia", "senha123", "pagante")
+        contas.gravar_assinatura(item["id"], subscription_id="sub_teste")
+        contas.aplicar_pagamento_assinatura(subscription_id="sub_teste", pago=True)
+        self.assertEqual(contas.situacao(item["id"])["situacao"], "pago")
+        self.assertTrue(contas.pode_usar(item["id"])[0])
+
 
 if __name__ == "__main__":
     unittest.main()

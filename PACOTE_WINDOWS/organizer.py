@@ -31,46 +31,38 @@ DEFAULT_CONFIG = {
     "base_url": "https://api.groq.com/openai/v1",
 }
 
+# Só estas duas aparecem no cadastro. Sem Groq, sem Flash “barato”.
 PRESETS = {
-    "groq_free": {
-        "provider": "groq",
-        "provider_label": "Groq — gratuito (teste / rascunho)",
-        "model": "openai/gpt-oss-120b",
-        "base_url": "https://api.groq.com/openai/v1",
-        "custo": "Grátis (limites diários)",
-        "nota": "Bom pra testar. Para peça séria, use Gemini Pro ou OpenAI.",
-    },
-    "google_flash": {
-        "provider": "google",
-        "provider_label": "Google Gemini Flash (rápido)",
-        "model": "gemini-2.5-flash",
-        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "custo": "Free limitado ou barato",
-        "nota": "Resumos e peças médias.",
+    "openai_mini": {
+        "provider": "openai",
+        "provider_label": "OpenAI GPT-4.1 mini — recomendado",
+        "model": "gpt-4.1-mini",
+        "base_url": "https://api.openai.com/v1",
+        "custo": "Pago à OpenAI (fora do xThemis)",
+        "nota": "Melhor para começar: lê processo grande e escreve peça estável. Chave começa com sk-.",
+        "recomendado": True,
+        "ajuda": (
+            "1) Abra platform.openai.com e crie conta.\n"
+            "2) Em Billing, coloque crédito (cartão).\n"
+            "3) Em API keys, crie uma chave.\n"
+            "4) Copie a chave (sk-...) e cole aqui. Não compartilhe com ninguém."
+        ),
     },
     "google_pro": {
         "provider": "google",
-        "provider_label": "Google Gemini Pro — qualidade (recomendado pago)",
+        "provider_label": "Google Gemini 2.5 Pro — qualidade máxima",
         "model": "gemini-2.5-pro",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "custo": "Pago · melhor qualidade forense",
-        "nota": "Use chave AIza... com faturamento. Ideal para recurso/contestação.",
-    },
-    "google_lite": {
-        "provider": "google",
-        "provider_label": "Google Gemini Flash-Lite",
-        "model": "gemini-2.5-flash-lite",
-        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "custo": "Barato",
-        "nota": "Só rascunho simples.",
-    },
-    "openai_mini": {
-        "provider": "openai",
-        "provider_label": "OpenAI GPT-4.1 mini — qualidade paga",
-        "model": "gpt-4.1-mini",
-        "base_url": "https://api.openai.com/v1",
-        "custo": "Pago · boa relação custo/qualidade",
-        "nota": "Chave sk-... com crédito OpenAI.",
+        "custo": "Pago ao Google (fora do xThemis)",
+        "nota": "Quando quiser o máximo de qualidade na peça. Chave começa com AIza.",
+        "recomendado": False,
+        "ajuda": (
+            "1) Abra aistudio.google.com/apikey.\n"
+            "2) Entre com sua conta Google.\n"
+            "3) Crie uma chave de API.\n"
+            "4) Ative faturamento se o Google pedir (uso contínuo).\n"
+            "5) Copie a chave (AIza...) e cole aqui."
+        ),
     },
 }
 

@@ -293,15 +293,15 @@ async function refreshConfig() {
   const preset = document.getElementById("preset");
   const modelo = configCache.model || "";
   const prov = configCache.provider || "";
+  const rec = (configCache.plano && configCache.plano.ia_recomendada) || "openai_mini";
   if (modelo === "gemini-2.5-pro" || (prov === "google" && modelo.includes("pro"))) preset.value = "google_pro";
-  else if (modelo === "gemini-2.5-flash") preset.value = "google_flash";
   else if (modelo === "gpt-4.1-mini" || prov === "openai") preset.value = "openai_mini";
-  else preset.value = "openai_mini";
+  else preset.value = rec;
   const iaLocal = lerIaLocal();
   if (iaLocal && iaLocal.api_key && iaLocal.preset && iaLocal.preset !== "groq_free" && !configCache.has_key) {
     if ([...preset.options].some((opt) => opt.value === iaLocal.preset)) preset.value = iaLocal.preset;
-    if (iaLocal.model) document.getElementById("api-model").value = iaLocal.model;
   }
+  pintarAjudaIa(preset.value);
   const preview = document.getElementById("logo-preview");
   if (preview) {
     if (configCache.has_logo) {
@@ -1604,13 +1604,89 @@ function rotuloAcesso(item) {
   return item.acesso || "pagante";
 }
 
+function dinheiroBr(valor) {
+  const n = Number(valor);
+  if (!Number.isFinite(n)) return "39,90";
+  return n.toFixed(2).replace(".", ",");
+}
+
 function pintarDiasTeste(cfg) {
   const input = document.getElementById("dias-teste");
+  const preco = document.getElementById("preco-mensal");
+  const gate = document.getElementById("gateway-cobranca");
   const nota = document.getElementById("dias-teste-nota");
   if (!input) return;
   const dias = cfg && cfg.dias_teste ? cfg.dias_teste : 14;
+  const mensal = cfg && cfg.preco_mensal != null ? cfg.preco_mensal : 39.9;
   input.value = String(dias);
-  if (nota) nota.textContent = `Pagante novo ganha ${dias} dia(s) de teste.`;
+  if (preco) preco.value = dinheiroBr(mensal);
+  if (gate && cfg && cfg.gateway) gate.value = cfg.gateway;
+  if (nota) {
+    nota.textContent = `Pagante: ${dias} dia(s) de teste, depois R$ ${dinheiroBr(mensal)}/mês via ${
+      (cfg && cfg.gateway) || "asaas"
+    }.`;
+  }
+}
+
+function pintarAjudaIa(presetId) {
+  const box = document.getElementById("ajuda-ia");
+  if (!box) return;
+  const p = configCache?.presets?.[presetId];
+  if (!p) {
+    box.innerHTML =
+      "<strong>Recomendado: OpenAI GPT-4.1 mini.</strong><br>" +
+      "1) Abra <a href='https://platform.openai.com/signup' target='_blank' rel='noopener'>platform.openai.com</a> e crie conta.<br>" +
+      "2) Em Billing, coloque crédito no cartão.<br>" +
+      "3) Em API keys, crie uma chave.<br>" +
+      "4) Copie a chave (começa com sk-) e cole no campo abaixo.";
+    return;
+  }
+  const linhas = (p.ajuda || "").split("\n").filter(Boolean);
+  const links =
+    presetId === "google_pro"
+      ? "Links: <a href='https://aistudio.google.com/apikey' target='_blank' rel='noopener'>criar chave Gemini</a>"
+      : "Links: <a href='https://platform.openai.com/signup' target='_blank' rel='noopener'>criar conta</a> · " +
+        "<a href='https://platform.openai.com/settings/organization/billing' target='_blank' rel='noopener'>Billing</a> · " +
+        "<a href='https://platform.openai.com/api-keys' target='_blank' rel='noopener'>API keys</a>";
+  box.innerHTML =
+    `<strong>${escapeHtml(p.provider_label || presetId)}</strong><br>` +
+    linhas.map((l) => escapeHtml(l)).join("<br>") +
+    `<br>${links}`;
+  const custo = document.getElementById("custo-info");
+  if (custo) custo.textContent = `${p.custo || ""} — ${p.nota || ""}`;
+  const modelo = document.getElementById("api-model");
+  if (modelo && p.model) modelo.value = p.model;
+}
+
+function pintarAssinar(eu) {
+  const box = document.getElementById("box-assinar");
+  const texto = document.getElementById("texto-assinar");
+  if (!box || !texto) return;
+  const acesso = eu?.acesso || "";
+  const situacao = eu?.situacao || "";
+  const plano = eu?.plano || configCache?.plano || {};
+  const preco = dinheiroBr(plano.preco_mensal != null ? plano.preco_mensal : 39.9);
+  const mostra =
+    acesso === "pagante" ||
+    acesso === "avulso" ||
+    situacao === "teste" ||
+    situacao === "expirado";
+  box.hidden = !mostra || acesso === "dono" || acesso === "free" || acesso === "cortesia";
+  if (box.hidden) return;
+  if (situacao === "pago") {
+    texto.textContent = `Assinatura ativa · R$ ${preco}/mês. A IA continua sendo a chave que você colou neste perfil.`;
+    document.getElementById("btn-assinar").hidden = true;
+  } else if (situacao === "teste") {
+    texto.textContent = `Você está no teste (${eu.dias_restantes ?? "?"} dia(s)). Depois: R$ ${preco}/mês. A IA (GPT ou Gemini) você assina à parte e cola a chave aqui.`;
+    document.getElementById("btn-assinar").hidden = false;
+  } else {
+    texto.textContent = `O teste acabou. Para continuar: R$ ${preco}/mês no xThemis + sua própria IA (chave neste perfil).`;
+    document.getElementById("btn-assinar").hidden = false;
+  }
+  if (!eu?.cobranca_pronta && situacao !== "pago") {
+    texto.textContent +=
+      " Cobrança ainda sem chave Asaas no servidor — o administrador precisa ligar ASAAS_API_KEY no Render.";
+  }
 }
 
 function renderUsuarios(lista) {
@@ -1733,15 +1809,24 @@ document.getElementById("btn-novo-usuario").onclick = async () => {
 
 document.getElementById("btn-salvar-dias-teste").onclick = async () => {
   const dias = Number(document.getElementById("dias-teste").value || 14);
+  const preco = document.getElementById("preco-mensal")?.value || "39,90";
+  const gateway = document.getElementById("gateway-cobranca")?.value || "asaas";
   const r = await fetch(apiUrl("/api/acesso-config"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ dias_teste: dias }),
+    body: JSON.stringify({
+      dias_teste: dias,
+      preco_mensal: preco,
+      gateway,
+      ia_recomendada: "openai_mini",
+    }),
   });
   const data = await r.json();
-  if (!r.ok) return toast(data.detail || "Não salvei os dias.");
+  if (!r.ok) return toast(data.detail || "Não salvei o plano.");
   pintarDiasTeste(data.config);
-  toast("Dias de teste salvos: " + (data.config && data.config.dias_teste));
+  toast(
+    `Plano salvo: R$ ${dinheiroBr(data.config.preco_mensal)}/mês · ${data.config.dias_teste} dia(s) de teste · ${data.config.gateway}`
+  );
 };
 
 let logoPendente = null;
@@ -1799,13 +1884,37 @@ document.getElementById("btn-prazo").onclick = async () => {
 };
 
 document.getElementById("preset").addEventListener("change", async (ev) => {
-  const preset = ev.target.value;
-  const p = configCache?.presets?.[preset];
-  if (p) {
-    document.getElementById("api-model").value = p.model;
-    document.getElementById("custo-info").textContent = p.custo + " — " + p.nota;
-  }
+  pintarAjudaIa(ev.target.value);
 });
+
+document.getElementById("btn-assinar").onclick = async () => {
+  const email = document.getElementById("email-assinar").value.trim();
+  const cpf = document.getElementById("cpf-assinar").value.trim();
+  if (!email || !email.includes("@")) {
+    toast("Digite o e-mail da cobrança.");
+    return;
+  }
+  setBusy(true, "Abrindo cobrança…");
+  try {
+    const r = await fetch(apiUrl("/api/assinar"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, cpf }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || "Não abri a cobrança.");
+    if (data.checkout_url) {
+      window.open(data.checkout_url, "_blank", "noopener");
+      toast("Página de pagamento aberta. Depois que pagar, o acesso libera sozinho.");
+    } else {
+      toast("Assinatura criada. Confira o e-mail ou o painel Asaas.");
+    }
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    setBusy(false);
+  }
+};
 
 function lerIaLocal() {
   try {
@@ -2239,22 +2348,24 @@ if (!localStorage.getItem("harvey_onboard")) {
 fetch(apiUrl("/api/eu"))
   .then((r) => r.json())
   .then((eu) => {
+    window.__eu = eu;
     if (eu.nome) {
-    let extra = "";
-    if (eu.acesso === "dono") extra = " · administrador";
-    else if (eu.acesso === "free" || eu.acesso === "cortesia") extra = " · free";
-    else if (eu.situacao === "pago") extra = " · pagante";
-    else if (eu.situacao === "teste") {
-      extra =
-        eu.dias_restantes == null
-          ? " · teste"
-          : ` · teste · ${eu.dias_restantes}d`;
-    } else if (eu.situacao === "expirado" || eu.acesso === "pagante" || eu.acesso === "avulso") {
-      extra = " · teste acabou";
+      let extra = "";
+      if (eu.acesso === "dono") extra = " · administrador";
+      else if (eu.acesso === "free" || eu.acesso === "cortesia") extra = " · free";
+      else if (eu.situacao === "pago") extra = " · pagante";
+      else if (eu.situacao === "teste") {
+        extra =
+          eu.dias_restantes == null
+            ? " · teste"
+            : ` · teste · ${eu.dias_restantes}d`;
+      } else if (eu.situacao === "expirado" || eu.acesso === "pagante" || eu.acesso === "avulso") {
+        extra = " · teste acabou";
+      }
+      document.getElementById("btn-conta").textContent = eu.nome + extra;
+      if (eu.motivo && eu.pode_usar === false) toast(eu.motivo);
     }
-    document.getElementById("btn-conta").textContent = eu.nome + extra;
-    if (eu.motivo && eu.pode_usar === false) toast(eu.motivo);
-  }
+    pintarAssinar(eu);
   })
   .catch(() => {});
 

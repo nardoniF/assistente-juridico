@@ -366,23 +366,33 @@
   <dialog id="ajustes">
     <form method="dialog" id="form-ajustes">
       <h2>Ajustes</h2>
-      <p class="muted">A IA fica neste perfil. Não há plano grátis: escolha <strong>GPT</strong> ou <strong>Gemini</strong> e cole a chave do plano que você assinou.</p>
+      <p class="muted">São <strong>duas coisas separadas</strong>: (1) assinatura do xThemis e (2) a IA que <em>você</em> assina. Cada pessoa cola a própria chave neste perfil. Não existe uma IA única para todo o sistema.</p>
+      <div id="box-assinar" class="manual-ia" hidden>
+        <p><strong>Assinatura do xThemis</strong></p>
+        <p id="texto-assinar" class="micro"></p>
+        <label>E-mail para a cobrança
+          <input id="email-assinar" type="email" placeholder="seu@email.com" autocomplete="email" />
+        </label>
+        <label>CPF (opcional)
+          <input id="cpf-assinar" type="text" placeholder="somente números" autocomplete="off" />
+        </label>
+        <button type="button" id="btn-assinar" class="accent">Assinar mensalidade</button>
+        <p class="muted micro">PIX, boleto ou cartão pelo Asaas. A IA continua sendo paga à parte (OpenAI ou Google).</p>
+      </div>
       <div class="manual-ia">
-        <p><strong>Como assinar e pegar a chave</strong></p>
-        <p>OpenAI (GPT): entre em <a href="https://platform.openai.com/settings/organization/billing" target="_blank" rel="noopener">Billing</a>, adicione crédito, depois crie a chave em <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">API keys</a>. Ela começa com sk-.</p>
-        <p>Google (Gemini): abra <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>, crie uma chave que começa com AIza. Para uso contínuo, ative o faturamento nessa conta.</p>
-        <p>Salve. No próximo login este perfil já usa essa IA e essa chave.</p>
+        <p><strong>Sua IA (obrigatória) — passo a passo</strong></p>
+        <p class="micro">Escolha só entre as duas opções abaixo. São as que leem processo grande e escrevem peça séria. Não deixamos IA fraca ou “grátis”, porque depois a peça fica ruim e parece culpa do xThemis.</p>
+        <p id="ajuda-ia" class="micro"></p>
       </div>
       <div class="ajustes-cols">
       <div>
-      <label>Plano de IA
+      <label>Qual IA usar neste perfil
         <select id="preset">
-          <option value="openai_mini">OpenAI GPT-4.1 mini</option>
-          <option value="google_pro">Google Gemini Pro</option>
-          <option value="google_flash">Google Gemini Flash</option>
+          <option value="openai_mini">OpenAI GPT-4.1 mini · recomendado</option>
+          <option value="google_pro">Google Gemini 2.5 Pro · qualidade máxima</option>
         </select>
       </label>
-      <label>Chave da API
+      <label>Cole aqui o código (chave) da IA
         <input id="api-key" type="password" autocomplete="off" placeholder="sk-... ou AIza..." />
       </label>
       <label>Escritório
@@ -399,20 +409,28 @@
       </label>
       <img id="logo-preview" alt="Logo do escritório" hidden />
       <p class="muted micro">PNG ou JPG pequeno. Entra no topo do PDF, junto com escritório, nome e OAB. O checklist interno não vai para o juiz.</p>
-      <label>Modelo (avançado)
-        <input id="api-model" type="text" />
-      </label>
+      <input id="api-model" type="hidden" />
       <p id="custo-info" class="muted micro"></p>
       <p id="pasta-info" class="muted micro"></p>
       </div>
       <div>
       <div id="convidados-box" hidden>
-        <h3>Usuários</h3>
-        <p class="muted micro">Você é o administrador. Crie o nome e a senha, escolha free ou pagante e passe para a pessoa. Ela entra em www.xthemis.com.br e cola a chave de GPT ou Gemini dela.</p>
+        <h3>Usuários e plano</h3>
+        <p class="muted micro">Você é o administrador. Crie o nome e a senha, escolha free ou pagante. A pessoa entra em www.xthemis.com.br, assina o xThemis se for pagante, e cola a chave da IA dela.</p>
+        <label>Preço mensal (R$)
+          <input id="preco-mensal" type="text" inputmode="decimal" value="39,90" />
+        </label>
         <label>Dias de teste do pagante
           <input id="dias-teste" type="number" min="1" max="365" value="14" />
         </label>
-        <button type="button" id="btn-salvar-dias-teste" class="ghost">Salvar dias de teste</button>
+        <label>Gateway de cobrança
+          <select id="gateway-cobranca">
+            <option value="asaas">Asaas · recomendado (mais barato na recorrência)</option>
+            <option value="mercadopago">Mercado Pago</option>
+            <option value="stripe">Stripe</option>
+          </select>
+        </label>
+        <button type="button" id="btn-salvar-dias-teste" class="ghost">Salvar plano</button>
         <p id="dias-teste-nota" class="muted micro"></p>
         <ul id="usuarios-lista" class="convidados-lista"></ul>
         <label>Nome
@@ -428,9 +446,9 @@
           </select>
         </label>
         <button type="button" id="btn-novo-usuario" class="accent">Criar usuário</button>
-        <p class="muted micro">Free não expira. Pagante usa o sistema só até acabar o teste; depois você renova, marca como pago ou muda para free.</p>
+        <p class="muted micro">Free não expira. Pagante tem dias de teste; depois assina pelo Asaas (R$ do preço acima). Você também pode marcar Pago ou Renovar teste na mão.</p>
       </div>
-        <p class="muted micro">Stripe ainda não está ligado. O endereço público é www.xthemis.com.br. O servidor gratuito dorme sem visita e acorda no próximo acesso.</p>
+        <p class="muted micro">Cobrança recorrente: Asaas. Coloque ASAAS_API_KEY no Render. Webhook: /api/webhooks/asaas. O servidor gratuito dorme sem visita.</p>
         <h3>Pasta dos processos</h3>
         <p class="muted micro">Cada processo vira uma pasta com o nome das partes e o número. Dentro ficam o processo.pdf inteiro e um PDF novo para cada ação.</p>
         <label>Diretório
@@ -490,6 +508,6 @@
   </dialog>
 
   <script src="config.js"></script>
-  <script src="app.js?v=22"></script>
+  <script src="app.js?v=23"></script>
 </body>
 </html>

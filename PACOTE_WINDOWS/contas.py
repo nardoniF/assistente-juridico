@@ -69,18 +69,59 @@ def load_acesso_config() -> dict:
     except (TypeError, ValueError):
         dias = 14
     dias = max(1, min(dias, 365))
-    return {"dias_teste": dias}
-
-
-def save_acesso_config(dias_teste: int) -> dict:
     try:
-        dias = int(dias_teste)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Informe quantos dias de teste o pagante tem.") from exc
-    dias = max(1, min(dias, 365))
-    data = {"dias_teste": dias}
-    _save(ACESSO_CFG, data)
-    return data
+        preco = float(cfg.get("preco_mensal") if cfg.get("preco_mensal") is not None else 39.9)
+    except (TypeError, ValueError):
+        preco = 39.9
+    preco = max(5.0, min(preco, 9999.0))
+    gateway = (cfg.get("gateway") or "asaas").strip().lower()
+    if gateway not in ("asaas", "mercadopago", "stripe"):
+        gateway = "asaas"
+    ia_rec = (cfg.get("ia_recomendada") or "openai_mini").strip()
+    if ia_rec not in ("openai_mini", "google_pro"):
+        ia_rec = "openai_mini"
+    return {
+        "dias_teste": dias,
+        "preco_mensal": round(preco, 2),
+        "moeda": "BRL",
+        "gateway": gateway,
+        "ia_recomendada": ia_rec,
+    }
+
+
+def save_acesso_config(
+    dias_teste=None,
+    preco_mensal=None,
+    gateway=None,
+    ia_recomendada=None,
+) -> dict:
+    atual = load_acesso_config()
+    if dias_teste is not None:
+        try:
+            dias = int(dias_teste)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Informe quantos dias de teste o pagante tem.") from exc
+        atual["dias_teste"] = max(1, min(dias, 365))
+    if preco_mensal is not None:
+        try:
+            bruto = str(preco_mensal).strip().replace("R$", "").replace(" ", "").replace(",", ".")
+            preco = float(bruto)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Informe o preço mensal, por exemplo 39,90.") from exc
+        atual["preco_mensal"] = round(max(5.0, min(preco, 9999.0)), 2)
+    if gateway is not None:
+        g = str(gateway).strip().lower()
+        if g not in ("asaas", "mercadopago", "stripe"):
+            raise ValueError("Gateway inválido. Use asaas, mercadopago ou stripe.")
+        atual["gateway"] = g
+    if ia_recomendada is not None:
+        ia = str(ia_recomendada).strip()
+        if ia not in ("openai_mini", "google_pro"):
+            raise ValueError("IA recomendada: openai_mini ou google_pro.")
+        atual["ia_recomendada"] = ia
+    atual["moeda"] = "BRL"
+    _save(ACESSO_CFG, atual)
+    return atual
 
 
 def _normalizar_acesso(marcado: str | None, user: dict, users: list) -> str:
@@ -196,6 +237,65 @@ def situacao(user_id: str) -> dict:
 def pode_usar(user_id: str) -> tuple[bool, str]:
     info = situacao(user_id)
     return bool(info.get("pode_usar")), (info.get("motivo") or "")
+
+
+def gravar_assinatura(
+    user_id: str,
+    *,
+    customer_id: str = "",
+    subscription_id: str = "",
+    email: str = "",
+) -> None:
+    users, user = _achar_usuario(user_id)
+    if not user:
+        raise ValueError("Usuário não encontrado.")
+    if customer_id:
+        user["asaas_customer_id"] = customer_id
+    if subscription_id:
+        user["asaas_subscription_id"] = subscription_id
+    if email:
+        user["email"] = email.strip()
+    _save(USERS, users)
+
+
+def aplicar_pagamento_assinatura(
+    *,
+    subscription_id: str = "",
+    external_reference: str = "",
+    pago: bool,
+) -> dict | None:
+    """Webhook Asaas: liga ou desliga o acesso pago do pagante."""
+    users = _usuarios()
+    alvo = None
+    if subscription_id:
+        alvo = next((u for u in users if u.get("asaas_subscription_id") == subscription_id), None)
+    if not alvo and external_reference:
+        alvo = next((u for u in users if u.get("id") == external_reference), None)
+    if not alvo:
+        return None
+    if _acesso(alvo, users) == "dono":
+        return None
+    alvo["acesso"] = "pagante"
+    if pago:
+        alvo["pago"] = True
+    else:
+        alvo["pago"] = False
+        # Sem pagamento: não inventa teste novo; admin renova se quiser.
+        if not _teste_ate(alvo):
+            alvo["teste_ate"] = ""
+    _save(USERS, users)
+    return {"id": alvo.get("id"), "nome": alvo.get("nome"), "pago": bool(alvo.get("pago"))}
+
+
+def dados_cobranca(user_id: str) -> dict:
+    _, user = _achar_usuario(user_id)
+    if not user:
+        return {}
+    return {
+        "email": user.get("email") or "",
+        "asaas_customer_id": user.get("asaas_customer_id") or "",
+        "asaas_subscription_id": user.get("asaas_subscription_id") or "",
+    }
 
 
 def _marcar_teste(user: dict, dias: int | None = None) -> None:
