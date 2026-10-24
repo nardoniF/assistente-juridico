@@ -505,19 +505,25 @@ def extract_process(pdf_path: Path, max_chars: int = 550_000) -> dict:
         sem_ocr: list[int] = []
         inicio = time.monotonic()
         ranked = _rank_ocr(pages, candidatos)
-        for n, i in enumerate(ranked):
-            if len(ocr_pages) >= MAX_OCR_PAGES or (
-                ocr_pages and time.monotonic() - inicio > OCR_SECONDS
-            ):
-                sem_ocr = [p + 1 for p in ranked[n:]]
-                break
-            ocr = _ocr_page(doc[i])
-            if _OCR_BROKEN:
-                sem_ocr = [p + 1 for p in ranked[n:]]
-                break
-            if ocr.strip():
-                pages[i] = (pages[i] + "\n" + ocr).strip()
-                ocr_pages.append(i + 1)
+        # No site gratuito o OCR de centenas de páginas mata o processo
+        # antes da pasta existir. O texto digital de todas as páginas entra.
+        ocr_no_site = os.environ.get("WEB_MODE", "").strip() in ("1", "true", "True", "yes")
+        if ocr_no_site:
+            sem_ocr = [p + 1 for p in ranked]
+        else:
+            for n, i in enumerate(ranked):
+                if len(ocr_pages) >= MAX_OCR_PAGES or (
+                    ocr_pages and time.monotonic() - inicio > OCR_SECONDS
+                ):
+                    sem_ocr = [p + 1 for p in ranked[n:]]
+                    break
+                ocr = _ocr_page(doc[i])
+                if _OCR_BROKEN:
+                    sem_ocr = [p + 1 for p in ranked[n:]]
+                    break
+                if ocr.strip():
+                    pages[i] = (pages[i] + "\n" + ocr).strip()
+                    ocr_pages.append(i + 1)
         ocr_pages.sort()
         ocr_puladas = len(sem_ocr)
 
