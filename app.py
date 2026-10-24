@@ -933,30 +933,30 @@ async def importar(request: Request, arquivo: UploadFile = File(...)):
     """Novo processo (ou mesmo número): copia PDF → pasta nomeada → processo.pdf único."""
     organizer.ensure_dirs()
     tmp = organizer.HOME_APP / "_upload.pdf"
-    total = await _receber_pdf(arquivo, tmp)
-    if total > FILA_PDF:
-        job = secrets.token_hex(8)
-        uid = _uid(request)
-        path = organizer.HOME_APP / f"_job_{job}.pdf"
-        tmp.replace(path)
-        JOBS[job] = {"status": "lendo"}
+    await _receber_pdf(arquivo, tmp)
+    # A leitura (sobretudo OCR) passa do tempo do pedido HTTP. A resposta volta na hora.
+    job = secrets.token_hex(8)
+    uid = _uid(request)
+    path = organizer.HOME_APP / f"_job_{job}.pdf"
+    tmp.replace(path)
+    JOBS[job] = {"status": "lendo"}
 
-        def _fila(path=path, uid=uid, job=job):
-            try:
-                JOBS[job] = {"status": "ok", "result": _salvar_import(path, uid)}
-            except Exception as e:
-                JOBS[job] = {"status": "erro", "detail": str(e)[:400]}
-            finally:
-                if path.exists():
-                    path.unlink()
+    def _fila(path=path, uid=uid, job=job):
+        try:
+            JOBS[job] = {"status": "ok", "result": _salvar_import(path, uid)}
+        except Exception as e:
+            JOBS[job] = {"status": "erro", "detail": str(e)[:400]}
+        finally:
+            if path.exists():
+                path.unlink()
 
-        threading.Thread(target=_fila, daemon=True).start()
-        return {"ok": True, "job": job, "fila": True, "aviso": "PDF grande entrou na fila. A leitura continua em segundo plano."}
-    try:
-        return _salvar_import(tmp, _uid(request))
-    finally:
-        if tmp.exists():
-            tmp.unlink()
+    threading.Thread(target=_fila, daemon=True).start()
+    return {
+        "ok": True,
+        "job": job,
+        "fila": True,
+        "aviso": "O PDF entrou na leitura. A pasta aparece quando terminar. Não feche a aba.",
+    }
 
 
 def _salvar_import(tmp: Path, uid: str | None) -> dict:
