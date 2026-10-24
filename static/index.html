@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=15" />
+  <link rel="stylesheet" href="styles.css?v=16" />
 </head>
 <body>
   <div class="ambiance" aria-hidden="true"></div>
@@ -417,20 +417,6 @@
       <div id="convidados-box" hidden>
         <h3>Usuários e plano</h3>
         <p class="muted micro">Você é o administrador. Crie o nome e a senha, escolha free ou pagante. A pessoa entra em www.xthemis.com.br, assina o xThemis se for pagante, e cola a chave da IA dela.</p>
-        <label>Preço mensal (R$)
-          <input id="preco-mensal" type="text" inputmode="decimal" value="39,90" />
-        </label>
-        <label>Dias de teste do pagante
-          <input id="dias-teste" type="number" min="1" max="365" value="14" />
-        </label>
-        <label>Gateway de cobrança
-          <select id="gateway-cobranca">
-            <option value="mercadopago">Mercado Pago · PIX e cartão (Sensor Tattoo Fix)</option>
-          </select>
-        </label>
-        <button type="button" id="btn-salvar-dias-teste" class="ghost">Salvar plano</button>
-        <p id="dias-teste-nota" class="muted micro"></p>
-        <ul id="usuarios-lista" class="convidados-lista"></ul>
         <label>Nome
           <input id="novo-usuario-nome" type="text" placeholder="Nome para entrar" autocomplete="off" />
         </label>
@@ -445,6 +431,20 @@
         </label>
         <button type="button" id="btn-novo-usuario" class="accent">Criar usuário</button>
         <p class="muted micro">Free não expira. Pagante tem dias de teste; depois assina pelo Mercado Pago (R$ do preço acima). Você também pode marcar Pago ou Renovar teste na mão.</p>
+        <label>Preço mensal (R$)
+          <input id="preco-mensal" type="text" inputmode="decimal" value="39,90" />
+        </label>
+        <label>Dias de teste do pagante
+          <input id="dias-teste" type="number" min="1" max="365" value="14" />
+        </label>
+        <label>Gateway de cobrança
+          <select id="gateway-cobranca">
+            <option value="mercadopago">Mercado Pago · PIX e cartão (Sensor Tattoo Fix)</option>
+          </select>
+        </label>
+        <button type="button" id="btn-salvar-dias-teste" class="ghost">Salvar plano</button>
+        <p id="dias-teste-nota" class="muted micro"></p>
+        <ul id="usuarios-lista" class="convidados-lista"></ul>
       </div>
         <p class="muted micro">Cobrança: Mercado Pago (PIX/cartão). No Render use MP_ACCESS_TOKEN da Sensor. Webhook: /api/webhooks/mercadopago. Asaas não entra neste fluxo.</p>
         <h3>Pasta dos processos</h3>
