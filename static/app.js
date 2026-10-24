@@ -981,17 +981,25 @@ async function importFile(file) {
     let data = await r.json();
     if (!r.ok && !data.ok) throw new Error(data.detail || "falha");
     if (data.job) {
-      setBusy(true, "PDF grande na fila…", "importar");
+      setBusy(true, "Lendo o PDF. Não feche esta aba…");
+      let pronto = false;
       for (let i = 0; i < 300; i++) {
         await new Promise((res) => setTimeout(res, 3000));
-        const j = await (await fetch(apiUrl("/api/job?id=" + data.job))).json();
+        let j = null;
+        try {
+          const jr = await fetch(apiUrl("/api/job?id=" + encodeURIComponent(data.job)));
+          j = await jr.json();
+        } catch (e) {
+          continue;
+        }
         if (j.status === "ok") {
           data = j.result;
+          pronto = true;
           break;
         }
         if (j.status === "erro") throw new Error(j.detail || "fila");
-        if (i === 299) throw new Error("A fila ainda está lendo. Atualize a página daqui a pouco.");
       }
+      if (!pronto) throw new Error("A leitura ainda não terminou. Anexe o PDF de novo daqui a um minuto.");
     }
     setStatus(importStatus, "Pasta criada.", "ok");
     selected = { id: data.id, path: data.path, meta: data.meta };
